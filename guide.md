@@ -101,7 +101,7 @@ Assets/
 │   └── Hologram_Blue.mat
 ├── StreamingAssets/
 │   └── structures/
-│       └── P00533.json              # 3장 파이썬 전처리 결과물
+│       └── P00533.json              # 5장 2절 파이썬 전처리 결과물
 └── Scenes/
     └── Lab_Desktop.unity            # 지금 작업하는 메인 씬 (PC 전용)
     └── Lab_XR.unity                 # 9단계 이후 XR 씬 (지금은 생성만, 비워둠)
@@ -152,10 +152,11 @@ GET https://alphafold.ebi.ac.uk/api/prediction/{UniProt_ID}
 
 ### 5.2 Python 사전 파싱 (권장)
 ```python
-import json, requests
+import json, os, requests
 from Bio.PDB import PDBParser
 
 def fetch_alphafold(uniprot_id: str, out_dir="structures"):
+    os.makedirs(out_dir, exist_ok=True)
     meta = requests.get(f"https://alphafold.ebi.ac.uk/api/prediction/{uniprot_id}").json()[0]
     pdb_text = requests.get(meta["pdbUrl"]).text
     path = f"{out_dir}/{uniprot_id}.pdb"
@@ -164,6 +165,7 @@ def fetch_alphafold(uniprot_id: str, out_dir="structures"):
     return path, meta
 
 def pdb_to_layered_json(pdb_path, out_json_path):
+    os.makedirs(os.path.dirname(out_json_path), exist_ok=True)
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("protein", pdb_path)
     atoms = []
@@ -184,9 +186,9 @@ def pdb_to_layered_json(pdb_path, out_json_path):
         json.dump({"atoms": atoms}, f)
 
 path, meta = fetch_alphafold("P00533")
-pdb_to_layered_json(path, "structures/P00533.json")
+pdb_to_layered_json(path, "Assets/StreamingAssets/structures/P00533.json")
 ```
-결과 JSON을 `Assets/StreamingAssets/structures/`에 넣습니다.
+`pdb_to_layered_json`이 `Assets/StreamingAssets/structures/`에 바로 JSON을 생성하므로, 별도의 수동 복사 단계 없이 결과물이 Unity가 읽는 위치에 놓입니다.
 
 ---
 
