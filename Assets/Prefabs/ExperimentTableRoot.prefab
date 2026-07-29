@@ -166,6 +166,7 @@ GameObject:
   m_Component:
   - component: {fileID: 4348404247631613068}
   - component: {fileID: 5171891919454215055}
+  - component: {fileID: 5289168045290359337}
   m_Layer: 0
   m_Name: ProteinAnchor_Main
   m_TagString: Untagged
@@ -207,3 +208,26 @@ MonoBehaviour:
   atomScale: 0.25
   bondCovalentMaxDistance: 1.9
   showBackboneOnly: 0
+--- !u!114 &5289168045290359337
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 4750915772746554178}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 61f45432ef5721c4aa4f8305ab7d810b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  targetCamera: {fileID: 0}
+  segmentPrefab: {fileID: 5705180872700442042, guid: e06750e4d5b92ea418ef857d272a702b, type: 3}
+  helixRegions:
+  - label: ActivationLoop
+    startResId: 858
+    endResId: 879
+  ribbonColor: {r: 0.2, g: 0.6, b: 1, a: 1}
+  helixColor: {r: 1, g: 0.6, b: 0.1, a: 1}
+  ribbonThicknessScale: 2.5
+  helixThicknessScale: 3.2
+  maxRayDistance: 100

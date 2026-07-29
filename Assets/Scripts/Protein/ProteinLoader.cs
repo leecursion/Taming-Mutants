@@ -24,6 +24,8 @@ public class ProteinLoader : MonoBehaviour
     public GameObject bondPrefab;      // 얇은 Cylinder 프리팹
     public float atomScale = 0.25f;
     public float bondCovalentMaxDistance = 1.9f; // Angstrom 기준 결합으로 볼 최대 거리
+    [Tooltip("결합 실린더 반지름(X/Z). bondPrefab 기본 Cylinder는 반지름 0.5unit이라 그대로 두면 원자보다 훨씬 두꺼워짐")]
+    public float bondRadiusScale = 0.05f;
 
     [Header("레이어 필터 (F-03.2 분자 레이어 분해)")]
     public bool showBackboneOnly = false; // true면 N, CA, C, O 만 표시
@@ -131,8 +133,7 @@ public class ProteinLoader : MonoBehaviour
         bond.transform.localPosition = mid;
         bond.transform.up = (b - a).normalized;
         float length = Vector3.Distance(a, b);
-        var scale = bond.transform.localScale;
-        bond.transform.localScale = new Vector3(scale.x, length / 2f, scale.z);
+        bond.transform.localScale = new Vector3(bondRadiusScale, length / 2f, bondRadiusScale);
         _spawnedBonds.Add(bond);
     }
 
@@ -142,5 +143,13 @@ public class ProteinLoader : MonoBehaviour
         foreach (var g in _spawnedBonds) if (g) Destroy(g);
         _spawnedAtoms.Clear();
         _spawnedBonds.Clear();
+    }
+
+    // 리본/Helix 표시 레벨(StructureLevelController)에서 아미노산 단계로 넘어갈 때만
+    // 원자/결합을 보이게 하기 위한 토글. 로드 직후에는 SetAtomsVisible(false)로 숨겨둔다.
+    public void SetAtomsVisible(bool visible)
+    {
+        foreach (var g in _spawnedAtoms) if (g) g.SetActive(visible);
+        foreach (var g in _spawnedBonds) if (g) g.SetActive(visible);
     }
 }
