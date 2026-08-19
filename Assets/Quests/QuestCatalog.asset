@@ -1,0 +1,17 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0ed6aa5d6e3e0b64396e433c04dc9b76, type: 3}
+  m_Name: QuestCatalog
+  m_EditorClassIdentifier: 
+  quests:
+  - {fileID: 11400000, guid: 0ed6b570b4aea24449fea1ecce9f98e1, type: 2}
+  - {fileID: 11400000, guid: 5237717877229654ba54ac6df20a0a17, type: 2}
