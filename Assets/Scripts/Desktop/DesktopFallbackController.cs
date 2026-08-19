@@ -1,4 +1,6 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.Controls;
 
 /// <summary>
 /// F-02.2 핸드 제스처 제어의 PC 개발용 대체 컨트롤러.
@@ -24,12 +26,28 @@ public class DesktopFallbackController : MonoBehaviour
     public float maxScale = 3f;
     public float scrollZoomSpeed = 0.3f;
 
-    private Vector3 _lastMousePos;
+    private Vector2 _lastMousePos;
     private bool _isDragging;
+
+    private void Awake()
+    {
+        // target이 비어있거나 씬 인스턴스가 아닌 프리팹 "애셋"의 Transform이 연결된 경우
+        // (씬에 보이는 단백질은 회전하지 않고 애셋 원본 값만 오염됨)
+        // 씬 안에 로드된 ProteinLoader의 Transform으로 자동 교체한다.
+        if (target == null || !target.gameObject.scene.IsValid())
+        {
+            var loader = FindFirstObjectByType<ProteinLoader>();
+            if (loader != null)
+            {
+                target = loader.transform;
+                Debug.LogWarning("[DesktopFallbackController] target이 씬 오브젝트가 아니어서 ProteinLoader 인스턴스로 자동 재연결했습니다.");
+            }
+        }
+    }
 
     private void Update()
     {
-        if (target == null) return;
+        if (target == null || Mouse.current == null) return;
 
         HandleRotate();
         HandleScrollZoom();
@@ -38,32 +56,48 @@ public class DesktopFallbackController : MonoBehaviour
     // 마우스 오른쪽 버튼(기본값)을 누른 채 드래그 -> 대상 회전 (HandGestureController의 한 손 회전과 동일한 역할)
     private void HandleRotate()
     {
-        if (Input.GetMouseButtonDown(rotateMouseButton))
+        ButtonControl button = GetRotateButton();
+        if (button == null) return;
+
+        if (button.wasPressedThisFrame)
         {
             _isDragging = true;
-            _lastMousePos = Input.mousePosition;
+            _lastMousePos = Mouse.current.position.ReadValue();
         }
-        else if (Input.GetMouseButtonUp(rotateMouseButton))
+        else if (button.wasReleasedThisFrame)
         {
             _isDragging = false;
         }
 
         if (!_isDragging) return;
 
-        Vector3 delta = Input.mousePosition - _lastMousePos;
+        Vector2 mousePos = Mouse.current.position.ReadValue();
+        Vector2 delta = mousePos - _lastMousePos;
         float yaw = delta.x * rotationSpeed * Time.deltaTime * 0.01f;
         float pitch = -delta.y * rotationSpeed * Time.deltaTime * 0.01f;
 
         target.Rotate(Vector3.up, yaw, Space.World);
         target.Rotate(Vector3.right, pitch, Space.World);
 
-        _lastMousePos = Input.mousePosition;
+        _lastMousePos = mousePos;
+    }
+
+    // rotateMouseButton(0=왼쪽, 1=오른쪽, 2=휠클릭)을 New Input System 버튼으로 매핑
+    private ButtonControl GetRotateButton()
+    {
+        switch (rotateMouseButton)
+        {
+            case 0: return Mouse.current.leftButton;
+            case 2: return Mouse.current.middleButton;
+            default: return Mouse.current.rightButton;
+        }
     }
 
     // 마우스 휠 -> 확대/축소 (HandGestureController의 양손 핀치 스케일과 동일한 역할)
     private void HandleScrollZoom()
     {
-        float scroll = Input.GetAxis("Mouse ScrollWheel");
+        // Windows에서 한 노치(클릭) = 120 단위이므로 legacy Input.GetAxis와 비슷한 크기로 정규화
+        float scroll = Mouse.current.scroll.ReadValue().y / 120f;
         if (Mathf.Approximately(scroll, 0f)) return;
 
         float currentScale = target.localScale.x;

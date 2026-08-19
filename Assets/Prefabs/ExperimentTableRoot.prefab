@@ -184,7 +184,7 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0.95, z: 0}
-  m_LocalScale: {x: 0.3, y: 0.3, z: 0.3}
+  m_LocalScale: {x: 0.38749993, y: 0.38749993, z: 0.38749993}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 9078707193705603589}
@@ -207,6 +207,7 @@ MonoBehaviour:
   bondPrefab: {fileID: 5705180872700442042, guid: e06750e4d5b92ea418ef857d272a702b, type: 3}
   atomScale: 0.25
   bondCovalentMaxDistance: 1.9
+  bondRadiusScale: 0.05
   showBackboneOnly: 0
 --- !u!114 &5289168045290359337
 MonoBehaviour:
@@ -228,6 +229,6 @@ MonoBehaviour:
     endResId: 879
   ribbonColor: {r: 0.2, g: 0.6, b: 1, a: 1}
   helixColor: {r: 1, g: 0.6, b: 0.1, a: 1}
-  ribbonThicknessScale: 2.5
-  helixThicknessScale: 3.2
+  ribbonRadius: 0.08
+  helixRadius: 0.1
   maxRayDistance: 100

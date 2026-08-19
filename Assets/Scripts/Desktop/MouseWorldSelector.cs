@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 
 /// <summary>
 /// F-04.1 시선 추적 기반 활성 부위 탐색, F-02.4 상황 맥락 브리핑의 PC 개발용 대체.
@@ -30,7 +31,7 @@ public class MouseWorldSelector : MonoBehaviour
 
     private void Update()
     {
-        if (Input.GetMouseButtonDown(0))
+        if (Mouse.current != null && Mouse.current.leftButton.wasPressedThisFrame)
         {
             TrySelectAtObjectUnderMouse();
         }
@@ -38,9 +39,9 @@ public class MouseWorldSelector : MonoBehaviour
 
     private void TrySelectAtObjectUnderMouse()
     {
-        if (targetCamera == null) return;
+        if (targetCamera == null || Mouse.current == null) return;
 
-        Ray ray = targetCamera.ScreenPointToRay(Input.mousePosition);
+        Ray ray = targetCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
         if (!Physics.Raycast(ray, out RaycastHit hit, maxRayDistance, selectableLayers)) return;
 
         AtomInfo atomInfo = hit.collider.GetComponent<AtomInfo>();
