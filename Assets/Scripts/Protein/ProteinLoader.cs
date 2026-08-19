@@ -53,8 +53,28 @@ public class ProteinLoader : MonoBehaviour
         public List<AtomRecord> atoms;
     }
 
+    private bool _loadRequested;
+
     private void Start()
     {
+        // 인트로 동안에는 이 오브젝트가 꺼져 있어서 Start가 늦게 불린다.
+        // 그 사이 QuestSession이 이미 Reload를 불렀다면 다시 읽지 않는다 —
+        // 원자 2천 개의 결합 계산은 O(n²)이라 한 번 더 도는 비용이 크다.
+        if (!_loadRequested) Reload();
+    }
+
+    /// <summary>
+    /// 현재 설정된 경로로 구조를 다시 읽어온다.
+    ///
+    /// 퀘스트를 고른 뒤에 <see cref="streamingAssetsRelativePath"/>를 바꾸는 흐름
+    /// (QuestSession.StartQuest)이 있어서 Start 이후에도 다시 로드할 수 있어야 한다.
+    /// 이전 로딩이 진행 중일 수 있으므로 코루틴을 먼저 정리한다 —
+    /// 그러지 않으면 두 구조의 원자가 한 앵커 아래 섞여 쌓인다.
+    /// </summary>
+    public void Reload()
+    {
+        _loadRequested = true;
+        StopAllCoroutines();
         StartCoroutine(LoadRoutine());
     }
 
