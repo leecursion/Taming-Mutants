@@ -270,6 +270,15 @@ python pdb_parser_script.py     # UNIPROT_ID = "P00533" (EGFR)
 | `Hologram.shader` | F-01.2, F-01.3, F-02.1 등 | PC / XR 공통 | **동작 중** (Hologram_Blue.mat) |
 | `HandGestureController.cs` | F-02.2 (실기기용, 지금은 미사용) | Simulator/실기기 | **미작성 (예정)** |
 | `ExperimentTableAnchor.cs` | F-01.1 (실기기용, 지금은 미사용) | Simulator/실기기 | **미작성 (예정)** |
+| `Quest/CompoundData.cs` | F-04 후보물질 데이터 모델 | PC / XR 공통 | 작성 완료 |
+| `Quest/CompoundMoleculeBuilder.cs` | F-04 화합물 3D 분자 생성 (CPK 색) | PC / XR 공통 | 작성 완료 |
+| `Quest/CompoundSlot.cs` | F-04.2 선택 박스 1칸 (와이어프레임 + 분자) | PC / XR 공통 | 작성 완료 (패널이 런타임 생성) |
+| `Quest/CompoundSelectionPanel.cs` | F-04.2 후보물질 선택 패널 (박스 4개 + 라벨) | PC(마우스) / XR(`SelectSlot()` 호출) | 작성 완료 / **씬 미부착** |
+| `Quest/DockingQuestController.cs` | F-04.3 도킹 연출 + 포켓 하이라이트 + 결과 판정 | PC / XR 공통 | 작성 완료 / **씬 미부착** |
+| `Quest/DockingQuestDefinition.cs` | F-04 퀘스트 정의 JSON 스키마 | PC / XR 공통 | 작성 완료 |
+| `Quest/QuestCatalog.cs` | F-04 퀘스트 카탈로그 (quests/index.json 로드·시작·자동 전환) | PC / XR 공통 | 작성 완료 / **씬 미부착** |
+| `Quest/WireBox.cs` | 와이어프레임 박스 공용 빌더 | PC / XR 공통 | 작성 완료 |
+| `UI/StructureLevelBackButton.cs` | 표시 레벨 뒤로가기 버튼 (화면 하단, 런타임 생성) | **PC** (XR은 월드 버튼으로 교체 예정) | 작성 완료 / **씬 미부착** |
 
 > 표에서 "PC / XR 공통"인 스크립트들은 입력 방식과 무관하게 동작하므로 지금 만들어두면 나중에 그대로 재사용됩니다. "실기기용" 두 개는 9단계 이후에만 작성해서 씬에 추가하면 됩니다.
 
@@ -293,6 +302,21 @@ python pdb_parser_script.py     # UNIPROT_ID = "P00533" (EGFR)
 
 5. **Wild Type / Mutant 2구조로 확장 (7단계)**
    `ProteinAnchor_Mutant`를 추가하고 `ComparisonController`로 회전/스케일을 동기화합니다.
+
+6. **F-04 후보물질 도킹 퀘스트 배선 (KRAS G12C) — 실행 방법**
+   모든 퀘스트 내용(단백질/타깃 잔기/후보물질)은 `StreamingAssets/quests/*.json`에 정의되며 `QuestCatalog`가 진행을 총괄합니다. 씬 배선은 컴포넌트 3개 부착 + 참조 연결이 전부입니다:
+   1. **CompoundPanel**: 빈 GameObject를 만들고 `CompoundSelectionPanel` 부착. `atomPrefab`/`bondPrefab`에 기존 Atom/Bond 프리팹을 연결. 배치는 **단백질 원자들의 실측 경계(bounds)를 기준으로 "왼쪽 옆 + 상단 높이 일치 + 사선(diagonalYaw)"에 자동 계산**됨 — QuestCatalog를 쓰면 `proteinLoader`/`levelController` 참조도 자동 배선되므로 추가 연결 불필요. `levelController`가 연결되면 **아미노산(원자) 레벨에서만 패널이 표시**됨. 화합물 4개는 하나의 외곽 박스 안에 2x2 그리드(columns=2), 원자는 "홀로-오브" 스타일(CPK 발광 코어 + Custom/Hologram 프레넬 셸). **한글 결과 메시지를 위해 `labelFont`에 한글 폰트(예: NotoSansKR) 지정 필수** (내장 폰트는 한글 글리프 없음). 간격·높이 미세조정: `sideGap`, `topOffset`.
+   1-1. **BackButton**: 빈 GameObject에 `StructureLevelBackButton` 부착 — `levelController`는 비워둬도 씬에서 자동 탐색. 화면 하단 중앙에 "◀ Back" 버튼이 항상 표시되며, 리본(최상위) 레벨에서는 회색 비활성, Helix/아미노산 레벨에서 클릭 시 이전 레벨로 복귀(Esc 키와 동일).
+   1-2. **리본/Helix/결합의 "실제" 표시**: Bond.prefab이 Hologram_Blue.mat을 쓰므로 세그먼트가 홀로그램으로 보였음 → `StructureLevelController.solidSegments`(기본 켜짐)와 `ProteinLoader.solidBonds`(기본 켜짐)가 URP Lit 불투명 재질로 자동 교체. 원래 홀로그램 룩을 원하면 체크 해제.
+   2. **DockingQuest**: 빈 GameObject에 `DockingQuestController` 부착 → `proteinLoader`(ProteinAnchor_Main), `selectionPanel`, (있다면) `levelController`, `questUI` 연결.
+   3. **QuestCatalog**: 빈 GameObject에 `QuestCatalog` 부착 → `proteinLoader`, `selectionPanel`, `dockingController`, (있다면) `levelController` 연결. Play 시 `quests/index.json`을 읽어 첫 퀘스트(KRAS G12C)를 자동 시작합니다 — ProteinLoader의 기존 EGFR 자동 로드는 카탈로그가 알아서 끕니다(`loadOnStart=false` 처리).
+   4. 플레이 흐름: 박스 클릭 → 포켓 잔기 시안색 펄스 → 분자 비행 → 결과별 연출(성공: Cys12 SG 섬광 + 녹색 공유결합 + 포켓 락인 / 오답: 튕김·충돌 셸·자석 반발 후 재도전) → 메시지·ΔG 표시. 성공 시 `QuestManagerSpatialUI` 단계 완료 + (설정 시) 다음 퀘스트 자동 전환.
+
+   **새 퀘스트/새 단백질 구조 추가 절차 (코드·씬 수정 불필요):**
+   1. 구조 JSON 생성: `python pdb_parser_script.py <UniProtID>` — `CONFIGS`에 잔기 범위·변이 부위만 등록 (변이 원자 치환이 필요하면 G12C처럼 후처리)
+   2. 후보물질 JSON들을 `StreamingAssets/compounds/`에 추가 (스키마: `CompoundData.cs` 참고, outcome은 Success/NoWarhead/StericClash/OffTarget)
+   3. 퀘스트 정의 JSON 1개를 `StreamingAssets/quests/`에 작성 (`kras_g12c.json`을 복사해 protein_json·target_residue_id·pocket_residue_ids·compound_files·helix_regions만 교체)
+   4. `quests/index.json` 목록에 파일명 추가 — 나열 순서가 진행 순서
 
 ### 알아둘 만한 사항
 - `ProteinLoader.BuildBonds`는 O(n²)로 원자 쌍을 전부 훑습니다. 현재 2,146개 원자 기준 약 230만 쌍이며 로딩 시 1회만 수행하므로 데스크톱에서는 문제없지만, 잔기 범위를 넓히거나 Quest 실기기로 넘어갈 때는 공간 분할(그리드 해싱)이 필요합니다.

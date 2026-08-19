@@ -29,6 +29,10 @@ public class StructureLevelController : MonoBehaviour
     public Camera targetCamera;
     [Tooltip("리본/Helix 세그먼트로 재사용할 프리팹. Bond.prefab(Cylinder+Collider)을 그대로 써도 된다.")]
     public GameObject segmentPrefab;
+    [Tooltip("세그먼트를 홀로그램이 아닌 불투명(실제) 재질로 표시. Bond.prefab이 Hologram_Blue.mat을 쓰므로 기본 켜짐")]
+    public bool solidSegments = true;
+    [Tooltip("세그먼트에 덮어씌울 머티리얼. 비우면 URP Lit 기본 머티리얼 자동 생성")]
+    public Material segmentMaterial;
 
     [Header("Helix 구간 (미리 입력, 계산하지 않음)")]
     public List<HelixRegion> helixRegions = new List<HelixRegion>();
@@ -41,6 +45,14 @@ public class StructureLevelController : MonoBehaviour
     public float ribbonRadius = 0.08f;
     public float helixRadius = 0.1f;
 
+    [Header("아미노산 단계 표시 범위")]
+    [Tooltip("켜면 아미노산 단계에서 선택한 Helix 구간(+여유 잔기, +항상 표시 잔기)만 원자 표시. 끄면 전체 원자 표시")]
+    public bool showOnlyRegionAtoms = true;
+    [Tooltip("Helix 구간 앞뒤로 함께 표시할 여유 잔기 수 (맥락 파악용)")]
+    public int regionResiduePadding = 2;
+    [Tooltip("아미노산 단계 진입 시 선택 구간이 전체 구조 중심 자리(화면 중앙)에 오도록 이동. 리본/Helix로 돌아가면 원복")]
+    public bool centerRegionOnAminoAcid = true;
+
     [Header("레이캐스트")]
     public float maxRayDistance = 100f;
 
@@ -51,6 +63,12 @@ public class StructureLevelController : MonoBehaviour
     private Transform _ribbonRoot;
     private readonly List<Transform> _helixRegionRoots = new List<Transform>();
     private int _activeHelixIndex = -1;
+    // 구간 필터와 무관하게 아미노산 단계에서 항상 표시할 잔기 (도킹 타깃/포켓 등 — QuestCatalog가 주입)
+    private readonly HashSet<int> _alwaysVisibleResidues = new HashSet<int>();
+    // 아미노산 단계 중앙 정렬용: CA 트레이스 캐시 + 전체 구조의 로컬 중심 + 현재 적용된 이동량
+    private List<KeyValuePair<int, Vector3>> _caTrace;
+    private Vector3 _fullCenterLocal;
+    private Vector3 _aminoAcidShift;
 
     private void Awake()
     {
@@ -82,10 +100,49 @@ public class StructureLevelController : MonoBehaviour
 
     private void HandleLoaded(ProteinLoader.ProteinData data)
     {
+        ClearBuilt(); // 구조 재로드(퀘스트 전환) 시 이전 리본/Helix 제거
         BuildRibbon(data);
         BuildHelixRegions(data);
+
+        // 아미노산 단계 중앙 정렬에 쓸 전체 구조 중심(CA 평균) 캐시
+        _caTrace = ExtractCaTrace(data);
+        _fullCenterLocal = Vector3.zero;
+        foreach (var entry in _caTrace) _fullCenterLocal += entry.Value;
+        if (_caTrace.Count > 0) _fullCenterLocal /= _caTrace.Count;
+
         _proteinLoader.SetAtomsVisible(false); // 아미노산 단계로 가기 전까지 원자 표시는 숨김
         SetLevel(ViewLevel.Ribbon);
+    }
+
+    private void ClearBuilt()
+    {
+        if (_ribbonRoot != null) Destroy(_ribbonRoot.gameObject);
+        _ribbonRoot = null;
+        foreach (var root in _helixRegionRoots)
+            if (root != null) Destroy(root.gameObject);
+        _helixRegionRoots.Clear();
+        _activeHelixIndex = -1;
+    }
+
+    /// <summary>
+    /// 퀘스트 정의 등 외부 데이터로 Helix 구간을 교체한다.
+    /// 다음 ProteinLoader.OnLoaded 시점(=LoadStructure 완료)에 새 구간으로 빌드된다.
+    /// </summary>
+    public void SetHelixRegions(IEnumerable<HelixRegion> regions)
+    {
+        helixRegions.Clear();
+        if (regions != null) helixRegions.AddRange(regions);
+    }
+
+    /// <summary>
+    /// 아미노산 단계의 구간 필터와 무관하게 항상 표시할 잔기 목록을 교체한다.
+    /// 도킹 퀘스트의 타깃/포켓 잔기는 Helix 구간 밖에 있어도 보여야 연출이 성립한다.
+    /// </summary>
+    public void SetAlwaysVisibleResidues(IEnumerable<int> residues)
+    {
+        _alwaysVisibleResidues.Clear();
+        if (residues != null)
+            foreach (int id in residues) _alwaysVisibleResidues.Add(id);
     }
 
     // --- 빌드 ---
@@ -155,6 +212,12 @@ public class StructureLevelController : MonoBehaviour
     private GameObject CreateSegment(Vector3 a, Vector3 b, Transform parent, float radius)
     {
         GameObject seg = Instantiate(segmentPrefab, parent);
+        if (solidSegments)
+        {
+            var renderer = seg.GetComponent<Renderer>();
+            if (renderer != null)
+                renderer.sharedMaterial = segmentMaterial != null ? segmentMaterial : RuntimeMaterials.Solid;
+        }
         Vector3 mid = (a + b) / 2f;
         seg.transform.localPosition = mid;
         seg.transform.up = (b - a).normalized;
@@ -178,6 +241,9 @@ public class StructureLevelController : MonoBehaviour
     private void TryClickAtMouse()
     {
         if (targetCamera == null || Mouse.current == null) return;
+        // UI 버튼(예: StructureLevelBackButton) 위 클릭은 3D 선택으로 처리하지 않음
+        if (UnityEngine.EventSystems.EventSystem.current != null &&
+            UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
         Vector2 mousePos = Mouse.current.position.ReadValue();
         Ray ray = targetCamera.ScreenPointToRay(mousePos);
         if (!Physics.Raycast(ray, out RaycastHit hit, maxRayDistance)) return;
@@ -231,9 +297,60 @@ public class StructureLevelController : MonoBehaviour
             _helixRegionRoots[i].gameObject.SetActive(active);
         }
 
-        _proteinLoader.SetAtomsVisible(level == ViewLevel.AminoAcid);
+        if (level == ViewLevel.AminoAcid)
+            _proteinLoader.SetVisibleResidues(BuildAminoAcidResidueSet()); // null이면 전체 표시
+        else
+            _proteinLoader.SetAtomsVisible(false);
+
+        ApplyAminoAcidCentering(level);
 
         OnLevelChanged?.Invoke(level);
+    }
+
+    // 아미노산 단계에서는 선택 구간만 남아 전체 구조의 한쪽 구석(예: 우하단)에 치우쳐 보인다.
+    // 구간의 CA 평균 위치가 전체 구조 중심이 있던 자리로 오도록 루트를 이동하고,
+    // 리본/Helix로 돌아가면 원복한다.
+    private void ApplyAminoAcidCentering(ViewLevel level)
+    {
+        // 이전에 적용한 이동 원복
+        transform.position -= _aminoAcidShift;
+        _aminoAcidShift = Vector3.zero;
+
+        if (level != ViewLevel.AminoAcid || !centerRegionOnAminoAcid) return;
+        if (_activeHelixIndex < 0 || _activeHelixIndex >= helixRegions.Count) return;
+        if (_caTrace == null || _caTrace.Count == 0) return;
+
+        HelixRegion region = helixRegions[_activeHelixIndex];
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        foreach (var entry in _caTrace)
+        {
+            if (entry.Key >= region.startResId && entry.Key <= region.endResId)
+            {
+                sum += entry.Value;
+                count++;
+            }
+        }
+        if (count == 0) return;
+
+        // TransformPoint 차분이라 현재 회전/줌 상태에서도 올바른 월드 이동량이 나온다
+        Vector3 regionCenterLocal = sum / count;
+        _aminoAcidShift = transform.TransformPoint(_fullCenterLocal) - transform.TransformPoint(regionCenterLocal);
+        transform.position += _aminoAcidShift;
+    }
+
+    // 아미노산 단계에서 보여줄 잔기 집합: 선택된 Helix 구간 ± 여유 + 항상 표시 잔기.
+    // 필터를 끄거나 선택된 구간이 없으면 null(전체 표시).
+    private HashSet<int> BuildAminoAcidResidueSet()
+    {
+        if (!showOnlyRegionAtoms) return null;
+        if (_activeHelixIndex < 0 || _activeHelixIndex >= helixRegions.Count) return null;
+
+        var set = new HashSet<int>(_alwaysVisibleResidues);
+        HelixRegion region = helixRegions[_activeHelixIndex];
+        for (int id = region.startResId - regionResiduePadding; id <= region.endResId + regionResiduePadding; id++)
+            set.Add(id);
+        return set;
     }
 }
 

@@ -45,7 +45,8 @@ def fetch_alphafold(uniprot_id: str, out_dir: str = "structures") -> tuple[str, 
 
 
 def pdb_to_layered_json(pdb_path: str, out_json_path: str,
-                         residue_range: tuple[int, int] | None = None) -> None:
+                         residue_range: tuple[int, int] | None = None,
+                         mutation_sites: tuple[int, ...] = ()) -> None:
     print(f"[3/4] PDB 파싱 및 JSON 변환: {pdb_path}")
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("protein", pdb_path)
@@ -75,7 +76,7 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
             "res_name": res.get_resname(),
             "res_id": res_id,
             "is_backbone": atom.get_name() in ("N", "CA", "C", "O"),
-            "is_mutation_site": res_id in (858, 790),  # L858R, T790M 하이라이트용
+            "is_mutation_site": res_id in mutation_sites,
         })
     print(f"      -> 원자 {len(atoms)}개 파싱 완료")
 
@@ -98,11 +99,25 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
     print(f"      -> 정상 JSON 확인, atoms 개수: {len(loaded['atoms'])}")
 
 
+
+# 단백질별 전처리 설정: 관심 잔기 범위 / 변이 부위 하이라이트
+CONFIGS = {
+    "P00533": {"range": (712, 979), "mutations": (858, 790)},  # EGFR: L858R, T790M (키나아제 도메인)
+    "P01116": {"range": None, "mutations": (12,)},             # KRAS: G12C (F-04 도킹 퀘스트 타깃)
+}
+
 if __name__ == "__main__":
-    UNIPROT_ID = "P00533"  # EGFR
+    import sys
+    UNIPROT_ID = sys.argv[1] if len(sys.argv) > 1 else "P00533"
+    cfg = CONFIGS.get(UNIPROT_ID, {"range": None, "mutations": ()})
     try:
         pdb_path, meta = fetch_alphafold(UNIPROT_ID)
-        pdb_to_layered_json(pdb_path, f"Assets/StreamingAssets/structures/{UNIPROT_ID}.json", residue_range=(712, 979))
+        pdb_to_layered_json(
+            pdb_path,
+            f"Assets/StreamingAssets/structures/{UNIPROT_ID}.json",
+            residue_range=cfg["range"],
+            mutation_sites=tuple(cfg["mutations"]),
+        )
         print("완료.")
     except Exception:
         print("전처리 중 오류 발생:")
