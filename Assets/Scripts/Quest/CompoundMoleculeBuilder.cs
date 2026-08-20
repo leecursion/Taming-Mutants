@@ -86,7 +86,8 @@ public static class CompoundMoleculeBuilder
 
             GameObject seg = Object.Instantiate(bondPrefab, root.transform);
             seg.transform.localPosition = (a + b) * 0.5f;
-            seg.transform.up = (b - a).normalized;
+            // a/b는 루트 로컬 좌표 — 판넬이 사선(diagonalYaw)으로 회전한 뒤에 빌드돼도 정확히 잇도록 로컬 회전 사용
+            seg.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (b - a).normalized);
             seg.transform.localScale = new Vector3(bondRadiusScale, Vector3.Distance(a, b) * 0.5f, bondRadiusScale);
             StripProteinComponents(seg);
             RuntimeMaterials.ApplySolid(seg); // Bond.prefab의 홀로그램 재질은 틴트를 무시하므로 교체

@@ -49,13 +49,24 @@ public class MutationHighlighter : MonoBehaviour
     }
 
     // 사용자가 특정 원자(변이 부위)를 선택했을 때 호출 (Raycast/시선/포인터 이벤트에서 연결)
+    // 같은 잔기를 몇 번을 다시 선택해도 매번 이벤트와 시각 피드백(섬광)이 다시 발생한다.
     public void SelectResidue(int residueId)
     {
         var site = mutationSites.Find(m => m.residueId == residueId);
-        if (site != null)
+        if (site == null) return;
+
+        // 재선택 여부를 사용자가 바로 알 수 있도록 해당 잔기 원자들을 짧게 섬광시킨다
+        if (_atomsByResidue.TryGetValue(residueId, out var atoms))
         {
-            OnMutationSelected?.Invoke(site);
+            foreach (var atomInfo in atoms)
+            {
+                if (atomInfo == null) continue;
+                var pulse = atomInfo.GetComponent<PulseHighlight>();
+                if (pulse != null) pulse.Flash();
+            }
         }
+
+        OnMutationSelected?.Invoke(site);
     }
 }
 
@@ -66,6 +77,7 @@ public class PulseHighlight : MonoBehaviour
     private MaterialPropertyBlock _mpb;
     private Color _baseColor;
     private float _speed;
+    private float _flashUntil;
 
     public void Init(Color color, float speed)
     {
@@ -75,15 +87,28 @@ public class PulseHighlight : MonoBehaviour
         _speed = speed;
     }
 
+    /// <summary>선택 피드백: 잠시 흰색에 가깝게 밝아졌다가 원래 펄스로 돌아온다. 재호출 시 매번 다시 반짝인다.</summary>
+    public void Flash(float duration = 0.5f)
+    {
+        _flashUntil = Time.time + duration;
+    }
+
     private void Update()
     {
         if (_renderer == null) return;
         float t = (Mathf.Sin(Time.time * _speed) + 1f) * 0.5f;
         Color c = Color.Lerp(_baseColor * 0.6f, _baseColor, t);
+        float emission = 1.5f;
+
+        if (Time.time < _flashUntil)
+        {
+            c = Color.Lerp(c, Color.white, 0.7f);
+            emission = 3f;
+        }
 
         _renderer.GetPropertyBlock(_mpb);
         _mpb.SetColor("_BaseColor", c);
-        _mpb.SetColor("_EmissionColor", c * 1.5f);
+        _mpb.SetColor("_EmissionColor", c * emission);
         _renderer.SetPropertyBlock(_mpb);
     }
 }

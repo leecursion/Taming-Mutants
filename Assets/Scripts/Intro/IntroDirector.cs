@@ -74,9 +74,15 @@ public class IntroDirector : MonoBehaviour
     private void Awake()
     {
         if (targetCamera == null) targetCamera = Camera.main;
-        if (assistant == null) assistant = FindFirstObjectByType<AIAssistantBrain>();
+        // 비서는 Play 버튼을 누르기 전(에디터 편집 모드)에는 보이지 않도록 씬에 비활성 상태로
+        // 저장돼 있다. 비활성 오브젝트는 FindFirstObjectByType 기본 옵션에서 제외되므로 찾을 때도
+        // 비활성까지 뒤진다.
+        if (assistant == null) assistant = FindFirstObjectByType<AIAssistantBrain>(FindObjectsInactive.Include);
         if (board == null) board = FindFirstObjectByType<QuestSelectionBoard>();
         if (session == null) session = FindFirstObjectByType<QuestSession>();
+
+        // 게임이 실제로 시작(Play)된 시점이므로 비서를 켠다.
+        if (assistant != null) assistant.gameObject.SetActive(true);
 
         // Start가 아니라 Awake에서 숨긴다. 모든 오브젝트의 Awake는 어떤 Start보다 먼저 돌기 때문에,
         // 여기서 꺼두면 ProteinLoader.Start가 아예 불리지 않아 인트로 동안 로딩이 시작되지 않는다.

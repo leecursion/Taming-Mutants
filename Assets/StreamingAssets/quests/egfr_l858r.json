@@ -1,0 +1,15 @@
+{
+  "id": "egfr_l858r",
+  "title": "EGFR L858R 후보물질 도킹",
+  "protein_json": "structures/P00533.json",
+  "target_residue_id": 797,
+  "target_atom_name": "SG",
+  "pocket_residue_ids": [718, 745, 790, 793, 796, 797],
+  "compounds_folder": "compounds",
+  "compound_files": ["compound_A.json", "compound_B.json", "compound_C.json", "compound_D.json"],
+  "entrance_offset": 0.8,
+  "helix_regions": [
+    {"label": "Activation Loop", "start_res_id": 858, "end_res_id": 879},
+    {"label": "aC Helix", "start_res_id": 756, "end_res_id": 767}
+  ]
+}

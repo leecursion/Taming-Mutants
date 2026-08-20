@@ -41,7 +41,8 @@ public class ProteinLoader : MonoBehaviour
     private readonly List<GameObject> _spawnedBonds = new List<GameObject>();
     // 잔기 필터 표시(SetVisibleResidues)용 — _spawnedAtoms/_spawnedBonds와 인덱스 병렬
     private readonly List<int> _spawnedAtomResIds = new List<int>();
-    private readonly List<Vector2Int> _spawnedBondResIds = new List<Vector2Int>();
+    // 결합의 양 끝 원자 인덱스(_spawnedAtoms 기준) — 결합 표시는 원자 표시 상태를 그대로 따른다
+    private readonly List<Vector2Int> _spawnedBondAtomIndices = new List<Vector2Int>();
 
     [Serializable]
     public class AtomRecord
@@ -82,6 +83,11 @@ public class ProteinLoader : MonoBehaviour
     /// </summary>
     public void Reload()
     {
+        // 꺼진 오브젝트에서는 코루틴을 시작할 수 없어 콘솔 에러만 남는다.
+        // 인트로 동안(무대 숨김) 들어오는 요청은 경로 변경만 반영된 상태로 두고,
+        // 무대를 켜는 쪽(QuestSession.StartQuest)이 다시 Reload를 부르는 흐름에 맡긴다.
+        if (!gameObject.activeInHierarchy) return;
+
         _loadRequested = true;
         StopAllCoroutines();
         StartCoroutine(LoadRoutine());
@@ -155,6 +161,8 @@ public class ProteinLoader : MonoBehaviour
     // 원자간 거리 기반 결합 추정 (O(n^2) 이지만 로딩 시 1회만 수행)
     private void BuildBonds(List<Vector3> positions, List<AtomRecord> records)
     {
+        var linkedResiduePairs = new HashSet<long>();
+
         for (int i = 0; i < positions.Count; i++)
         {
             for (int j = i + 1; j < positions.Count; j++)
@@ -162,13 +170,58 @@ public class ProteinLoader : MonoBehaviour
                 float dist = Vector3.Distance(positions[i], positions[j]) * 10f; // 다시 Angstrom 단위로 환산
                 if (dist <= bondCovalentMaxDistance)
                 {
-                    CreateBond(positions[i], positions[j], records[i].res_id, records[j].res_id);
+                    CreateBond(positions[i], positions[j], i, j);
+                    if (records[i].res_id != records[j].res_id)
+                        linkedResiduePairs.Add(PackPair(records[i].res_id, records[j].res_id));
                 }
             }
         }
+
+        EnsureChainConnectivity(positions, records, linkedResiduePairs);
     }
 
-    private void CreateBond(Vector3 a, Vector3 b, int resIdA, int resIdB)
+    /// <summary>
+    /// 서열상 이웃한 잔기(res_id 연속) 사이에 결합이 하나도 생기지 않았으면
+    /// 백본 C–N(없으면 CA–CA)을 강제로 이어준다. 거리 임계값에 걸리지 않는 특이 좌표나
+    /// 전처리 편차가 있어도 사슬이 중간에 끊겨 보이는 일이 없게 하는 보증 장치.
+    /// </summary>
+    private void EnsureChainConnectivity(List<Vector3> positions, List<AtomRecord> records,
+                                         HashSet<long> linkedResiduePairs)
+    {
+        var backboneOfRes = new Dictionary<int, int[]>(); // res_id -> [C, N, CA] 원자 인덱스 (-1 = 없음)
+        for (int i = 0; i < records.Count; i++)
+        {
+            if (!backboneOfRes.TryGetValue(records[i].res_id, out int[] slots))
+                backboneOfRes[records[i].res_id] = slots = new[] { -1, -1, -1 };
+            if (records[i].name == "C") slots[0] = i;
+            else if (records[i].name == "N") slots[1] = i;
+            else if (records[i].name == "CA") slots[2] = i;
+        }
+
+        var resIds = new List<int>(backboneOfRes.Keys);
+        resIds.Sort();
+
+        for (int k = 0; k < resIds.Count - 1; k++)
+        {
+            int r0 = resIds[k], r1 = resIds[k + 1];
+            if (r1 != r0 + 1) continue; // 서열상 떨어진 잔기(별개 조각)까지 잇지는 않는다
+            if (linkedResiduePairs.Contains(PackPair(r0, r1))) continue;
+
+            int[] a = backboneOfRes[r0], b = backboneOfRes[r1];
+            int ia = a[0] >= 0 ? a[0] : a[2]; // C 없으면 CA
+            int ib = b[1] >= 0 ? b[1] : b[2]; // N 없으면 CA
+            if (ia < 0 || ib < 0) continue;
+
+            CreateBond(positions[ia], positions[ib], ia, ib);
+        }
+    }
+
+    private static long PackPair(int a, int b)
+    {
+        return ((long)Mathf.Min(a, b) << 32) | (uint)Mathf.Max(a, b);
+    }
+
+    private void CreateBond(Vector3 a, Vector3 b, int atomIndexA, int atomIndexB)
     {
         GameObject bond = Instantiate(bondPrefab, transform);
         if (solidBonds)
@@ -184,11 +237,13 @@ public class ProteinLoader : MonoBehaviour
         }
         Vector3 mid = (a + b) / 2f;
         bond.transform.localPosition = mid;
-        bond.transform.up = (b - a).normalized;
+        // a/b는 부모(앵커) 로컬 좌표 — transform.up(월드 기준) 대신 로컬 회전으로 정렬해야
+        // 로드 시점에 앵커가 회전해 있어도(우클릭 드래그 회전 등) 결합이 원자 사이를 정확히 잇는다.
+        bond.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (b - a).normalized);
         float length = Vector3.Distance(a, b);
         bond.transform.localScale = new Vector3(bondRadiusScale, length / 2f, bondRadiusScale);
         _spawnedBonds.Add(bond);
-        _spawnedBondResIds.Add(new Vector2Int(resIdA, resIdB));
+        _spawnedBondAtomIndices.Add(new Vector2Int(atomIndexA, atomIndexB));
     }
 
     private void ClearPrevious()
@@ -198,7 +253,7 @@ public class ProteinLoader : MonoBehaviour
         _spawnedAtoms.Clear();
         _spawnedBonds.Clear();
         _spawnedAtomResIds.Clear();
-        _spawnedBondResIds.Clear();
+        _spawnedBondAtomIndices.Clear();
     }
 
     // 리본/Helix 표시 레벨(StructureLevelController)에서 아미노산 단계로 넘어갈 때만
@@ -211,7 +266,9 @@ public class ProteinLoader : MonoBehaviour
 
     /// <summary>
     /// 지정한 잔기(res_id) 집합에 속한 원자만 표시한다 (아미노산 단계의 부분 표시용).
-    /// 결합은 양 끝 원자의 잔기가 모두 집합에 있을 때만 표시. null이면 전체 표시.
+    /// null이면 전체 표시.
+    /// 결합이 하나도 없이 홀로 남는 원자(퀘스트 범위 필터 경계에서 결합 상대가 잘려나간 경우)는
+    /// 사슬/포켓 형태를 읽는 데 도움이 안 되므로 함께 숨겨, 남은 원자가 모두 결합으로 연결되게 한다.
     /// </summary>
     public void SetVisibleResidues(ICollection<int> residues)
     {
@@ -221,9 +278,24 @@ public class ProteinLoader : MonoBehaviour
             if (_spawnedAtoms[i])
                 _spawnedAtoms[i].SetActive(residues.Contains(_spawnedAtomResIds[i]));
 
+        // 결합은 양 끝 원자가 모두 보일 때만 표시한다 — 표시 경계에 걸친 결합이 허공에 뜨지 않는다.
+        var hasVisibleBond = new bool[_spawnedAtoms.Count];
         for (int i = 0; i < _spawnedBonds.Count; i++)
-            if (_spawnedBonds[i])
-                _spawnedBonds[i].SetActive(residues.Contains(_spawnedBondResIds[i].x) &&
-                                           residues.Contains(_spawnedBondResIds[i].y));
+        {
+            if (!_spawnedBonds[i]) continue;
+            Vector2Int pair = _spawnedBondAtomIndices[i];
+            bool visible = _spawnedAtoms[pair.x] && _spawnedAtoms[pair.x].activeSelf &&
+                           _spawnedAtoms[pair.y] && _spawnedAtoms[pair.y].activeSelf;
+            _spawnedBonds[i].SetActive(visible);
+            if (visible)
+            {
+                hasVisibleBond[pair.x] = true;
+                hasVisibleBond[pair.y] = true;
+            }
+        }
+
+        for (int i = 0; i < _spawnedAtoms.Count; i++)
+            if (_spawnedAtoms[i] && _spawnedAtoms[i].activeSelf && !hasVisibleBond[i])
+                _spawnedAtoms[i].SetActive(false);
     }
 }

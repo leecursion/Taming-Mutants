@@ -45,8 +45,21 @@ public class StructureLevelController : MonoBehaviour
     public float ribbonRadius = 0.08f;
     public float helixRadius = 0.1f;
 
+    [Header("클릭 유도 효과")]
+    [Tooltip("다음 단계로 내려갈 수 있는 세그먼트(리본의 Helix 구간, Helix 전체)를 점멸시켜 클릭 지점을 안내")]
+    public bool pulseClickableSegments = true;
+    [Tooltip("점멸 강조색 — 세그먼트 기본색과 이 색 사이를 오간다")]
+    public Color clickHintColor = new Color(0.9f, 1f, 0.45f);
+    [Tooltip("점멸 속도 (높을수록 빠르게 깜빡임)")]
+    public float clickHintPulseSpeed = 2.5f;
+    [Tooltip("세그먼트마다 위상을 어긋나게 해 구간을 따라 흐르는 파동처럼 보이게 하는 간격")]
+    public float clickHintPhaseStep = 0.35f;
+
     [Header("아미노산 단계 표시 범위")]
-    [Tooltip("켜면 아미노산 단계에서 선택한 Helix 구간(+여유 잔기, +항상 표시 잔기)만 원자 표시. 끄면 전체 원자 표시")]
+    [Tooltip("켜면 아미노산 단계에서 선택한 Helix 구간(+여유 잔기, +항상 표시 잔기)만 원자 표시. " +
+             "퀘스트와 무관한 원자를 지워 필요한 부분만 남기며, ProteinLoader.SetVisibleResidues가 " +
+             "결합이 끊긴 홀로 남는 원자까지 함께 숨겨 남은 원자가 모두 연결되게 한다. " +
+             "끄면 전체 원자 표시")]
     public bool showOnlyRegionAtoms = true;
     [Tooltip("Helix 구간 앞뒤로 함께 표시할 여유 잔기 수 (맥락 파악용)")]
     public int regionResiduePadding = 2;
@@ -175,6 +188,11 @@ public class StructureLevelController : MonoBehaviour
             var info = seg.AddComponent<RibbonSegmentInfo>();
             info.residueIdA = trace[i].Key;
             info.residueIdB = trace[i + 1].Key;
+
+            // 클릭 시 Helix로 내려갈 수 있는 구간만 점멸 — 클릭해도 반응 없는 곳은 그대로 둔다
+            if (pulseClickableSegments && FindHelixRegionIndex(trace[i].Key) >= 0)
+                seg.AddComponent<ClickHintPulse>()
+                   .Init(ribbonColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
         }
     }
 
@@ -202,6 +220,11 @@ public class StructureLevelController : MonoBehaviour
                 TintSegment(seg, helixColor);
                 var info = seg.AddComponent<HelixSegmentInfo>();
                 info.helixRegionIndex = r;
+
+                // Helix 단계에서는 어느 세그먼트를 눌러도 아미노산으로 내려가므로 전체가 점멸 대상
+                if (pulseClickableSegments)
+                    seg.AddComponent<ClickHintPulse>()
+                       .Init(helixColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
             }
 
             regionGo.SetActive(false);
@@ -220,7 +243,8 @@ public class StructureLevelController : MonoBehaviour
         }
         Vector3 mid = (a + b) / 2f;
         seg.transform.localPosition = mid;
-        seg.transform.up = (b - a).normalized;
+        // a/b는 로컬 좌표이므로 로컬 회전으로 정렬 (부모가 회전한 상태에서 빌드돼도 안전)
+        seg.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (b - a).normalized);
         float length = Vector3.Distance(a, b);
         seg.transform.localScale = new Vector3(radius, length / 2f, radius);
         return seg;
@@ -352,6 +376,7 @@ public class StructureLevelController : MonoBehaviour
             set.Add(id);
         return set;
     }
+
 }
 
 /// <summary>리본 세그먼트 클릭 판별용 — 어느 잔기 구간인지 표시.</summary>
@@ -365,4 +390,42 @@ public class RibbonSegmentInfo : MonoBehaviour
 public class HelixSegmentInfo : MonoBehaviour
 {
     public int helixRegionIndex;
+}
+
+/// <summary>
+/// 다음 단계로 내려갈 수 있는(클릭 가능한) 세그먼트를 기본색과 강조색 사이에서 점멸시킨다.
+/// 위상(phase)을 세그먼트마다 어긋나게 주면 구간을 따라 흐르는 파동처럼 보여 시선을 끈다.
+/// 리본/Helix 루트가 켜져 있을 때만 Update가 돌므로 레벨 전환 시 따로 켜고 끌 필요가 없다.
+/// </summary>
+public class ClickHintPulse : MonoBehaviour
+{
+    private Renderer _renderer;
+    private MaterialPropertyBlock _mpb;
+    private Color _baseColor;
+    private Color _hintColor;
+    private float _speed;
+    private float _phase;
+
+    public void Init(Color baseColor, Color hintColor, float speed, float phase)
+    {
+        _renderer = GetComponent<Renderer>();
+        _mpb = new MaterialPropertyBlock();
+        _baseColor = baseColor;
+        _hintColor = hintColor;
+        _speed = speed;
+        _phase = phase;
+    }
+
+    private void Update()
+    {
+        if (_renderer == null) return;
+        float t = (Mathf.Sin(Time.time * _speed + _phase) + 1f) * 0.5f;
+        Color c = Color.Lerp(_baseColor, _hintColor, t);
+
+        _renderer.GetPropertyBlock(_mpb);
+        _mpb.SetColor("_BaseColor", c);
+        // 머티리얼에 _EMISSION 키워드가 켜져 있으면(RuntimeMaterials.Solid) 발광까지 얹힌다
+        _mpb.SetColor("_EmissionColor", c * (0.3f + t * 1.2f));
+        _renderer.SetPropertyBlock(_mpb);
+    }
 }

@@ -44,6 +44,9 @@ public class DockingQuestController : MonoBehaviour
     public Color successColor = new Color(0.25f, 1f, 0.35f);
     public Color noWarheadColor = new Color(1f, 0.6f, 0.1f);
     public Color failColor = new Color(1f, 0.18f, 0.12f);
+    [Tooltip("도킹을 시작하기 전, 포켓/타깃 잔기 덩어리가 리본 구간과 서열상 떨어져 있어도 " +
+             "'끊긴 조각'이 아니라 의도된 관심 부위임을 알 수 있도록 항상 입히는 은은한 표시색")]
+    public Color pocketMarkerColor = new Color(0.85f, 0.35f, 0.95f);
 
     /// <summary>도킹 연출이 끝날 때 발생. Success면 퀘스트 통과.</summary>
     public event Action<DockingOutcome, CompoundData> OnDockingFinished;
@@ -78,21 +81,56 @@ public class DockingQuestController : MonoBehaviour
         _indexed = false;
     }
 
+    private void Awake()
+    {
+        // 씬 참조가 끊겨 있어도(프리팹 재직렬화로 stripped 참조가 깨진 사고가 실제로 있었다)
+        // 도킹이 조용히 죽지 않도록 복구한다. 인트로 동안 무대가 꺼져 있으므로 비활성까지 탐색.
+        if (proteinLoader == null)
+            proteinLoader = FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include);
+        if (selectionPanel == null)
+            selectionPanel = FindFirstObjectByType<CompoundSelectionPanel>(FindObjectsInactive.Include);
+        if (levelController == null && proteinLoader != null)
+            levelController = proteinLoader.GetComponent<StructureLevelController>();
+    }
+
     private void OnEnable()
     {
         if (selectionPanel != null) selectionPanel.OnCompoundChosen += HandleCompoundChosen;
         if (proteinLoader != null) proteinLoader.OnLoaded += HandleProteinLoaded;
+        if (levelController != null) levelController.OnLevelChanged += HandleLevelChanged;
     }
 
     private void OnDisable()
     {
         if (selectionPanel != null) selectionPanel.OnCompoundChosen -= HandleCompoundChosen;
         if (proteinLoader != null) proteinLoader.OnLoaded -= HandleProteinLoaded;
+        if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
     }
 
     private void HandleProteinLoaded(ProteinLoader.ProteinData data)
     {
         _indexed = false; // 재로드 시 다시 인덱싱
+    }
+
+    // 이전 버튼으로 Ribbon/Helix로 돌아가면 도킹 연출로 생성된 화합물 클론·공유결합 실린더는
+    // 원자 단계에서만 의미가 있으므로 함께 숨긴다. 다시 아미노산 단계로 내려오면 그대로 복원된다 —
+    // 성공 락인 상태(포켓에 남은 클론)는 지우지 않고 유지한다.
+    //
+    // 아미노산 단계로 내려올 때 포켓/타깃 잔기를 바로 인덱싱해 표시색을 입힌다. 이 잔기들은
+    // 리본에서 고른 Helix 구간과 서열상 멀리 떨어져 있어(StructureLevelController의
+    // "항상 표시" 잔기) 결합으로 이어지지 않는 별개 덩어리로 보인다 — 표시색이 없으면
+    // 도킹을 시작하기도 전에 "끊어진 원자"처럼 보인다.
+    private void HandleLevelChanged(StructureLevelController.ViewLevel level)
+    {
+        bool visible = level == StructureLevelController.ViewLevel.AminoAcid;
+        foreach (var go in _questSpawned)
+            if (go != null) go.SetActive(visible);
+
+        if (visible && proteinLoader != null)
+        {
+            if (!_indexed) IndexPocketAtoms();
+            if (!_questCompleted && _pulseRoutine == null) ApplyPocketMarker();
+        }
     }
 
     // 씬에 생성된 원자들 중 포켓 잔기/타깃 황 원자를 찾아둔다.
@@ -104,7 +142,7 @@ public class DockingQuestController : MonoBehaviour
 
         foreach (var atom in proteinLoader.GetComponentsInChildren<AtomInfo>(true))
         {
-            if (pocketResidueIds.Contains(atom.ResidueId))
+            if (pocketResidueIds.Contains(atom.ResidueId) || atom.ResidueId == targetResidueId)
                 _pocketAtoms.Add(atom);
 
             if (atom.ResidueId == targetResidueId)
@@ -123,6 +161,12 @@ public class DockingQuestController : MonoBehaviour
                              "로드된 구조의 res_id 범위를 확인하세요.");
     }
 
+    /// <summary>도킹 시도 전/후 대기 상태의 은은한 표시색. 펄스나 결과색과 달리 고정된 톤이다.</summary>
+    private void ApplyPocketMarker()
+    {
+        TintPocket(pocketMarkerColor, emission: 0.5f);
+    }
+
     private void HandleCompoundChosen(CompoundSlot slot)
     {
         if (_questCompleted) return;
@@ -131,6 +175,14 @@ public class DockingQuestController : MonoBehaviour
 
     private IEnumerator DockingRoutine(CompoundSlot slot)
     {
+        // Interactable을 잠그기 전에 확인한다 — 여기서 죽으면 패널이 영영 클릭 불능이 된다
+        if (proteinLoader == null)
+        {
+            Debug.LogError("[DockingQuest] ProteinLoader 참조가 없어 도킹을 진행할 수 없습니다. " +
+                           "DockingQuest 오브젝트의 Protein Loader 참조를 확인하세요.", this);
+            yield break;
+        }
+
         selectionPanel.Interactable = false;
         selectionPanel.ClearResult();
 
@@ -227,7 +279,8 @@ public class DockingQuestController : MonoBehaviour
                 Vector3 la = parent.InverseTransformPoint(warhead.position);
                 Vector3 lb = parent.InverseTransformPoint(_targetSulfur.transform.position);
                 bond.transform.localPosition = (la + lb) * 0.5f;
-                bond.transform.up = (_targetSulfur.transform.position - warhead.position).normalized;
+                // 위치/길이와 같은 로컬 좌표계(la/lb)로 방향도 맞춘다 — 앵커가 회전해 있어도 정확히 잇는다
+                bond.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (lb - la).normalized);
                 bond.transform.localScale = new Vector3(0.05f, Vector3.Distance(la, lb) * 0.5f, 0.05f);
                 RuntimeMaterials.ApplySolid(bond); // 홀로그램 재질은 녹색 틴트를 무시
                 CompoundMoleculeBuilder.Tint(bond, successColor);
@@ -250,7 +303,7 @@ public class DockingQuestController : MonoBehaviour
     private void FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)
     {
         StopPocketPulse();
-        RestorePocketColors();
+        ApplyPocketMarker(); // 완전히 원래 색으로 되돌리면 다시 "끊긴 원자"처럼 보이므로 표시색을 유지한다
         UnityEngine.Object.Destroy(clone);
 
         slot.SetResultColor(color);

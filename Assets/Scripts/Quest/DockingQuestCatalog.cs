@@ -32,6 +32,9 @@ public class DockingQuestCatalog : MonoBehaviour
     public DockingQuestController dockingController;
     [Tooltip("있으면 퀘스트별 helix_regions를 주입")]
     public StructureLevelController levelController;
+    [Tooltip("인트로에서 퀘스트를 고르는 세션. 있으면 자동 시작 대신 세션이 고른 퀘스트에 맞는 " +
+             "도킹 정의를 적용한다. 비우면 씬에서 자동 탐색")]
+    public QuestSession questSession;
 
     [Header("진행 설정")]
     [Tooltip("카탈로그 로드 완료 시 첫 퀘스트 자동 시작")]
@@ -59,6 +62,10 @@ public class DockingQuestCatalog : MonoBehaviour
         if (levelController == null)
             levelController = FindFirstObjectByType<StructureLevelController>();
 
+        // 인트로(퀘스트 보드)가 있는 씬에서는 세션이 퀘스트 선택을 주도한다
+        if (questSession == null)
+            questSession = FindFirstObjectByType<QuestSession>(FindObjectsInactive.Include);
+
         // 카탈로그가 로드를 주도하므로 개별 컴포넌트의 자동 로드는 끈다 (이중 로드 방지).
         if (autoStartFirstQuest)
         {
@@ -81,11 +88,13 @@ public class DockingQuestCatalog : MonoBehaviour
     private void OnEnable()
     {
         if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (questSession != null) questSession.OnQuestStarted += ApplyForSessionQuest;
     }
 
     private void OnDisable()
     {
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (questSession != null) questSession.OnQuestStarted -= ApplyForSessionQuest;
     }
 
     private IEnumerator Start()
@@ -110,7 +119,15 @@ public class DockingQuestCatalog : MonoBehaviour
         }
         Debug.Log($"[DockingQuestCatalog] 퀘스트 {_quests.Count}개 로드 완료");
 
-        if (autoStartFirstQuest && _quests.Count > 0) StartQuest(0);
+        if (questSession != null)
+        {
+            // 인트로가 퀘스트 선택을 주도한다. 정의 로딩보다 먼저 골랐다면 지금 적용한다.
+            if (questSession.CurrentQuest != null) ApplyForSessionQuest(questSession.CurrentQuest);
+        }
+        else if (autoStartFirstQuest && _quests.Count > 0)
+        {
+            StartQuest(0);
+        }
     }
 
     private IEnumerator Fetch(string url, Action<string> onSuccess)
@@ -133,6 +150,34 @@ public class DockingQuestCatalog : MonoBehaviour
     }
 
     public void StartQuest(int index)
+    {
+        ApplyQuest(index, loadStructure: true);
+    }
+
+    /// <summary>
+    /// 인트로(QuestSession)에서 고른 퀘스트에 맞는 도킹 정의를 찾아 적용한다.
+    /// 구조 로드는 QuestSession이 이미 수행하므로 여기서는 다시 로드하지 않는다.
+    /// 매칭되는 정의가 없으면 아무것도 덮어쓰지 않는다 — 특히 Helix 구간을 다른 구조의
+    /// 값으로 덮으면 리본의 클릭 유도 펄스와 단계 전환이 통째로 죽는다(프리팹 기본값 유지).
+    /// </summary>
+    private void ApplyForSessionQuest(QuestDefinition quest)
+    {
+        if (quest == null) return;
+        if (_quests.Count == 0) return; // 정의 로딩이 끝나면 Start 끝에서 CurrentQuest로 재시도된다
+
+        int idx = _quests.FindIndex(q =>
+            q.id == quest.questId ||
+            (!string.IsNullOrEmpty(q.protein_json) && q.protein_json == quest.structureStreamingPath));
+        if (idx < 0)
+        {
+            Debug.Log($"[DockingQuestCatalog] '{quest.questId}'에 해당하는 도킹 정의가 없어 기본 설정을 유지합니다.");
+            return;
+        }
+
+        ApplyQuest(idx, loadStructure: false);
+    }
+
+    private void ApplyQuest(int index, bool loadStructure)
     {
         if (index < 0 || index >= _quests.Count) return;
         CurrentIndex = index;
@@ -164,7 +209,7 @@ public class DockingQuestCatalog : MonoBehaviour
             levelController.SetAlwaysVisibleResidues(alwaysVisible);
         }
 
-        if (proteinLoader != null && !string.IsNullOrEmpty(def.protein_json))
+        if (loadStructure && proteinLoader != null && !string.IsNullOrEmpty(def.protein_json))
             proteinLoader.LoadStructure(def.protein_json);
 
         if (selectionPanel != null && def.compound_files != null && def.compound_files.Count > 0)
@@ -175,6 +220,9 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private void HandleDockingFinished(DockingOutcome outcome, CompoundData data)
     {
+        // 세션(인트로 선택)이 있는 씬에서는 진행 순서를 세션이 소유한다 —
+        // 카탈로그가 멋대로 다음 도킹 퀘스트로 구조를 갈아치우면 안 된다.
+        if (questSession != null) return;
         if (outcome != DockingOutcome.Success || !autoAdvanceOnSuccess) return;
 
         if (CurrentIndex + 1 < _quests.Count)

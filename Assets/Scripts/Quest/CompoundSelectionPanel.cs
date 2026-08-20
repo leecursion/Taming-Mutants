@@ -62,6 +62,14 @@ public class CompoundSelectionPanel : MonoBehaviour
     [Header("자동 배치 (단백질 실측 경계 기준, 시선 왼쪽 옆 + 상단 정렬 + 사선)")]
     [Tooltip("켜면 단백질 로드/레벨 전환 시 자동 배치")]
     public bool autoPlace = true;
+    [Tooltip("켜면 단백질 경계 대신 사용자 시야(카메라) 기준으로 배치. " +
+             "확정된 배치는 구조 옆 사선(끔) — 카메라 상대 배치로 되돌리지 말 것")]
+    public bool placeRelativeToCamera = false;
+    [Tooltip("카메라 기준 오프셋 (x=오른쪽, y=위, z=앞, 단위 m). 음수 x로 시야 왼쪽에 둔다. " +
+             "수평 방향(yaw)만 따르므로 고개를 숙여도 패널 높이는 눈높이 기준을 유지한다")]
+    public Vector3 cameraOffset = new Vector3(-0.68f, 0f, 1.5f);
+    [Tooltip("패널 전체 크기 배율. 구조 옆/카메라 상대 어느 배치에서든 적용된다")]
+    public float panelScale = 0.6f;
     [Tooltip("배치 기준이 되는 단백질 로더. 비우면 levelController에서 자동 획득, 그래도 없으면 placementAnchor 사용")]
     public ProteinLoader proteinLoader;
     [Tooltip("proteinLoader가 없을 때의 폴백 앵커 (예: ProteinAnchor_Main)")]
@@ -175,18 +183,26 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     // --- 자동 배치 ---
 
-    /// <summary>단백질 원자들의 월드 경계를 측정해 "왼쪽 옆 + 상단 정렬 + 사선"으로 즉시 배치.</summary>
+    /// <summary>단백질 원자들의 월드 경계를 측정해 "왼쪽 옆 + 상단 정렬 + 사선"으로 즉시 배치.
+    /// placeRelativeToCamera가 켜져 있으면 경계 대신 시야 기준 왼쪽 가까이에 사선으로 놓는다.</summary>
     public void PlaceNow()
     {
         if (targetCamera == null) return;
+
+        if (placeRelativeToCamera)
+        {
+            PlaceBesideUser();
+            return;
+        }
 
         Vector3 camRight = targetCamera.transform.right;
         camRight.y = 0f;
         if (camRight.sqrMagnitude < 1e-6f) camRight = Vector3.right;
         camRight.Normalize();
 
-        float panelHalfWidth = _outerSize.x > 0f ? _outerSize.x * 0.5f : boxSize + spacing * 0.5f + outerPadding;
-        float panelHalfHeight = _outerSize.y > 0f ? _outerSize.y * 0.5f : boxSize + spacing * 0.5f + outerPadding;
+        float scale = Mathf.Max(panelScale, 0.01f);
+        float panelHalfWidth = (_outerSize.x > 0f ? _outerSize.x * 0.5f : boxSize + spacing * 0.5f + outerPadding) * scale;
+        float panelHalfHeight = (_outerSize.y > 0f ? _outerSize.y * 0.5f : boxSize + spacing * 0.5f + outerPadding) * scale;
 
         Vector3 pos;
         // 활성(현재 보이는) 원자만 측정 — 아미노산 단계의 구간 필터/중앙 정렬과 일치하는 위치에 배치
@@ -212,19 +228,54 @@ public class CompoundSelectionPanel : MonoBehaviour
             return; // 배치 기준 없음
         }
 
-        // 카메라→패널 시선 방향을 따라 당기면 화면상 위치는 유지한 채 가깝고 크게 보인다
+        // 카메라→패널 시선 방향을 따라 당기면 화면상 위치는 유지한 채 가깝고 크게 보인다.
+        // 상한은 "카메라 앞 0.6m는 남긴다" — 이전의 dist*0.5 상한은 구조가 멀수록 당김을 깎아
+        // 판넬이 구조 깊이에 뒤처져 보이는 원인이었다.
         Vector3 toCam = targetCamera.transform.position - pos;
         float dist = toCam.magnitude;
         if (dist > 1e-4f)
-            pos += toCam / dist * Mathf.Min(pullTowardCamera, dist * 0.5f); // 카메라 통과 방지
+            pos += toCam / dist * Mathf.Min(pullTowardCamera, Mathf.Max(dist - 0.6f, 0f));
 
         transform.position = pos;
+        transform.localScale = Vector3.one * scale;
 
         // TextMesh는 +Z가 뒤통수 — forward가 카메라 반대편을 향해야 글이 바로 보인다.
         // 패널이 시선 왼쪽에 있으므로 음(-)의 yaw를 줘야 정면이 중앙 시선(안쪽)을 향한다.
         Vector3 away = pos - targetCamera.transform.position;
         away.y = 0f;
         if (away.sqrMagnitude < 1e-6f) return;
+        transform.rotation = Quaternion.LookRotation(away.normalized) * Quaternion.Euler(0f, -diagonalYaw, 0f);
+    }
+
+    /// <summary>
+    /// AI 비서의 사용자 기준 배치(AIAssistantFollower.localOffset)와 같은 방식으로,
+    /// 시야 왼쪽 가까이에 사선으로 놓는다. 단백질 크기/거리와 무관하게 항상 손 닿는 거리에 온다.
+    /// 비서와 마찬가지로 수평 방향(yaw)만 기준축으로 써서 고개 각도에 흔들리지 않는다.
+    /// </summary>
+    private void PlaceBesideUser()
+    {
+        Transform cam = targetCamera.transform;
+
+        Vector3 flatForward = cam.forward;
+        flatForward.y = 0f;
+        if (flatForward.sqrMagnitude < 1e-4f)
+        {
+            // 정수리/발밑을 보는 중 — forward가 수직이라 못 쓰고 up이 수평을 가리킨다
+            flatForward = cam.up;
+            flatForward.y = 0f;
+        }
+        if (flatForward.sqrMagnitude < 1e-4f) flatForward = Vector3.forward;
+
+        Quaternion basis = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
+        Vector3 pos = cam.position + basis * cameraOffset;
+
+        transform.position = pos;
+        transform.localScale = Vector3.one * Mathf.Max(panelScale, 0.01f);
+
+        // 패널이 시선 왼쪽에 있으므로 음(-)의 yaw로 정면을 중앙 시선(안쪽)으로 틀어 사선 배치
+        Vector3 away = pos - cam.position;
+        away.y = 0f;
+        if (away.sqrMagnitude < 1e-6f) away = basis * Vector3.forward;
         transform.rotation = Quaternion.LookRotation(away.normalized) * Quaternion.Euler(0f, -diagonalYaw, 0f);
     }
 
