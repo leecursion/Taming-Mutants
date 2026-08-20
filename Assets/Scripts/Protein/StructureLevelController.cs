@@ -29,6 +29,10 @@ public class StructureLevelController : MonoBehaviour
     public Camera targetCamera;
     [Tooltip("리본/Helix 세그먼트로 재사용할 프리팹. Bond.prefab(Cylinder+Collider)을 그대로 써도 된다.")]
     public GameObject segmentPrefab;
+    [Tooltip("세그먼트를 홀로그램이 아닌 불투명(실제) 재질로 표시. Bond.prefab이 Hologram_Blue.mat을 쓰므로 기본 켜짐")]
+    public bool solidSegments = true;
+    [Tooltip("세그먼트에 덮어씌울 머티리얼. 비우면 URP Lit 기본 머티리얼 자동 생성")]
+    public Material segmentMaterial;
 
     [Header("Helix 구간 (미리 입력, 계산하지 않음)")]
     public List<HelixRegion> helixRegions = new List<HelixRegion>();
@@ -41,6 +45,27 @@ public class StructureLevelController : MonoBehaviour
     public float ribbonRadius = 0.08f;
     public float helixRadius = 0.1f;
 
+    [Header("클릭 유도 효과")]
+    [Tooltip("다음 단계로 내려갈 수 있는 세그먼트(리본의 Helix 구간, Helix 전체)를 점멸시켜 클릭 지점을 안내")]
+    public bool pulseClickableSegments = true;
+    [Tooltip("점멸 강조색 — 세그먼트 기본색과 이 색 사이를 오간다")]
+    public Color clickHintColor = new Color(0.9f, 1f, 0.45f);
+    [Tooltip("점멸 속도 (높을수록 빠르게 깜빡임)")]
+    public float clickHintPulseSpeed = 2.5f;
+    [Tooltip("세그먼트마다 위상을 어긋나게 해 구간을 따라 흐르는 파동처럼 보이게 하는 간격")]
+    public float clickHintPhaseStep = 0.35f;
+
+    [Header("아미노산 단계 표시 범위")]
+    [Tooltip("켜면 아미노산 단계에서 선택한 Helix 구간(+여유 잔기, +항상 표시 잔기)만 원자 표시. " +
+             "퀘스트와 무관한 원자를 지워 필요한 부분만 남기며, ProteinLoader.SetVisibleResidues가 " +
+             "결합이 끊긴 홀로 남는 원자까지 함께 숨겨 남은 원자가 모두 연결되게 한다. " +
+             "끄면 전체 원자 표시")]
+    public bool showOnlyRegionAtoms = true;
+    [Tooltip("Helix 구간 앞뒤로 함께 표시할 여유 잔기 수 (맥락 파악용)")]
+    public int regionResiduePadding = 2;
+    [Tooltip("아미노산 단계 진입 시 선택 구간이 전체 구조 중심 자리(화면 중앙)에 오도록 이동. 리본/Helix로 돌아가면 원복")]
+    public bool centerRegionOnAminoAcid = true;
+
     [Header("레이캐스트")]
     public float maxRayDistance = 100f;
 
@@ -51,6 +76,12 @@ public class StructureLevelController : MonoBehaviour
     private Transform _ribbonRoot;
     private readonly List<Transform> _helixRegionRoots = new List<Transform>();
     private int _activeHelixIndex = -1;
+    // 구간 필터와 무관하게 아미노산 단계에서 항상 표시할 잔기 (도킹 타깃/포켓 등 — QuestCatalog가 주입)
+    private readonly HashSet<int> _alwaysVisibleResidues = new HashSet<int>();
+    // 아미노산 단계 중앙 정렬용: CA 트레이스 캐시 + 전체 구조의 로컬 중심 + 현재 적용된 이동량
+    private List<KeyValuePair<int, Vector3>> _caTrace;
+    private Vector3 _fullCenterLocal;
+    private Vector3 _aminoAcidShift;
 
     private void Awake()
     {
@@ -82,10 +113,49 @@ public class StructureLevelController : MonoBehaviour
 
     private void HandleLoaded(ProteinLoader.ProteinData data)
     {
+        ClearBuilt(); // 구조 재로드(퀘스트 전환) 시 이전 리본/Helix 제거
         BuildRibbon(data);
         BuildHelixRegions(data);
+
+        // 아미노산 단계 중앙 정렬에 쓸 전체 구조 중심(CA 평균) 캐시
+        _caTrace = ExtractCaTrace(data);
+        _fullCenterLocal = Vector3.zero;
+        foreach (var entry in _caTrace) _fullCenterLocal += entry.Value;
+        if (_caTrace.Count > 0) _fullCenterLocal /= _caTrace.Count;
+
         _proteinLoader.SetAtomsVisible(false); // 아미노산 단계로 가기 전까지 원자 표시는 숨김
         SetLevel(ViewLevel.Ribbon);
+    }
+
+    private void ClearBuilt()
+    {
+        if (_ribbonRoot != null) Destroy(_ribbonRoot.gameObject);
+        _ribbonRoot = null;
+        foreach (var root in _helixRegionRoots)
+            if (root != null) Destroy(root.gameObject);
+        _helixRegionRoots.Clear();
+        _activeHelixIndex = -1;
+    }
+
+    /// <summary>
+    /// 퀘스트 정의 등 외부 데이터로 Helix 구간을 교체한다.
+    /// 다음 ProteinLoader.OnLoaded 시점(=LoadStructure 완료)에 새 구간으로 빌드된다.
+    /// </summary>
+    public void SetHelixRegions(IEnumerable<HelixRegion> regions)
+    {
+        helixRegions.Clear();
+        if (regions != null) helixRegions.AddRange(regions);
+    }
+
+    /// <summary>
+    /// 아미노산 단계의 구간 필터와 무관하게 항상 표시할 잔기 목록을 교체한다.
+    /// 도킹 퀘스트의 타깃/포켓 잔기는 Helix 구간 밖에 있어도 보여야 연출이 성립한다.
+    /// </summary>
+    public void SetAlwaysVisibleResidues(IEnumerable<int> residues)
+    {
+        _alwaysVisibleResidues.Clear();
+        if (residues != null)
+            foreach (int id in residues) _alwaysVisibleResidues.Add(id);
     }
 
     // --- 빌드 ---
@@ -118,6 +188,11 @@ public class StructureLevelController : MonoBehaviour
             var info = seg.AddComponent<RibbonSegmentInfo>();
             info.residueIdA = trace[i].Key;
             info.residueIdB = trace[i + 1].Key;
+
+            // 클릭 시 Helix로 내려갈 수 있는 구간만 점멸 — 클릭해도 반응 없는 곳은 그대로 둔다
+            if (pulseClickableSegments && FindHelixRegionIndex(trace[i].Key) >= 0)
+                seg.AddComponent<ClickHintPulse>()
+                   .Init(ribbonColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
         }
     }
 
@@ -145,6 +220,11 @@ public class StructureLevelController : MonoBehaviour
                 TintSegment(seg, helixColor);
                 var info = seg.AddComponent<HelixSegmentInfo>();
                 info.helixRegionIndex = r;
+
+                // Helix 단계에서는 어느 세그먼트를 눌러도 아미노산으로 내려가므로 전체가 점멸 대상
+                if (pulseClickableSegments)
+                    seg.AddComponent<ClickHintPulse>()
+                       .Init(helixColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
             }
 
             regionGo.SetActive(false);
@@ -155,9 +235,16 @@ public class StructureLevelController : MonoBehaviour
     private GameObject CreateSegment(Vector3 a, Vector3 b, Transform parent, float radius)
     {
         GameObject seg = Instantiate(segmentPrefab, parent);
+        if (solidSegments)
+        {
+            var renderer = seg.GetComponent<Renderer>();
+            if (renderer != null)
+                renderer.sharedMaterial = segmentMaterial != null ? segmentMaterial : RuntimeMaterials.Solid;
+        }
         Vector3 mid = (a + b) / 2f;
         seg.transform.localPosition = mid;
-        seg.transform.up = (b - a).normalized;
+        // a/b는 로컬 좌표이므로 로컬 회전으로 정렬 (부모가 회전한 상태에서 빌드돼도 안전)
+        seg.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (b - a).normalized);
         float length = Vector3.Distance(a, b);
         seg.transform.localScale = new Vector3(radius, length / 2f, radius);
         return seg;
@@ -178,6 +265,9 @@ public class StructureLevelController : MonoBehaviour
     private void TryClickAtMouse()
     {
         if (targetCamera == null || Mouse.current == null) return;
+        // UI 버튼(예: StructureLevelBackButton) 위 클릭은 3D 선택으로 처리하지 않음
+        if (UnityEngine.EventSystems.EventSystem.current != null &&
+            UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
         Vector2 mousePos = Mouse.current.position.ReadValue();
         Ray ray = targetCamera.ScreenPointToRay(mousePos);
         if (!Physics.Raycast(ray, out RaycastHit hit, maxRayDistance)) return;
@@ -231,10 +321,62 @@ public class StructureLevelController : MonoBehaviour
             _helixRegionRoots[i].gameObject.SetActive(active);
         }
 
-        _proteinLoader.SetAtomsVisible(level == ViewLevel.AminoAcid);
+        if (level == ViewLevel.AminoAcid)
+            _proteinLoader.SetVisibleResidues(BuildAminoAcidResidueSet()); // null이면 전체 표시
+        else
+            _proteinLoader.SetAtomsVisible(false);
+
+        ApplyAminoAcidCentering(level);
 
         OnLevelChanged?.Invoke(level);
     }
+
+    // 아미노산 단계에서는 선택 구간만 남아 전체 구조의 한쪽 구석(예: 우하단)에 치우쳐 보인다.
+    // 구간의 CA 평균 위치가 전체 구조 중심이 있던 자리로 오도록 루트를 이동하고,
+    // 리본/Helix로 돌아가면 원복한다.
+    private void ApplyAminoAcidCentering(ViewLevel level)
+    {
+        // 이전에 적용한 이동 원복
+        transform.position -= _aminoAcidShift;
+        _aminoAcidShift = Vector3.zero;
+
+        if (level != ViewLevel.AminoAcid || !centerRegionOnAminoAcid) return;
+        if (_activeHelixIndex < 0 || _activeHelixIndex >= helixRegions.Count) return;
+        if (_caTrace == null || _caTrace.Count == 0) return;
+
+        HelixRegion region = helixRegions[_activeHelixIndex];
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+        foreach (var entry in _caTrace)
+        {
+            if (entry.Key >= region.startResId && entry.Key <= region.endResId)
+            {
+                sum += entry.Value;
+                count++;
+            }
+        }
+        if (count == 0) return;
+
+        // TransformPoint 차분이라 현재 회전/줌 상태에서도 올바른 월드 이동량이 나온다
+        Vector3 regionCenterLocal = sum / count;
+        _aminoAcidShift = transform.TransformPoint(_fullCenterLocal) - transform.TransformPoint(regionCenterLocal);
+        transform.position += _aminoAcidShift;
+    }
+
+    // 아미노산 단계에서 보여줄 잔기 집합: 선택된 Helix 구간 ± 여유 + 항상 표시 잔기.
+    // 필터를 끄거나 선택된 구간이 없으면 null(전체 표시).
+    private HashSet<int> BuildAminoAcidResidueSet()
+    {
+        if (!showOnlyRegionAtoms) return null;
+        if (_activeHelixIndex < 0 || _activeHelixIndex >= helixRegions.Count) return null;
+
+        var set = new HashSet<int>(_alwaysVisibleResidues);
+        HelixRegion region = helixRegions[_activeHelixIndex];
+        for (int id = region.startResId - regionResiduePadding; id <= region.endResId + regionResiduePadding; id++)
+            set.Add(id);
+        return set;
+    }
+
 }
 
 /// <summary>리본 세그먼트 클릭 판별용 — 어느 잔기 구간인지 표시.</summary>
@@ -248,4 +390,42 @@ public class RibbonSegmentInfo : MonoBehaviour
 public class HelixSegmentInfo : MonoBehaviour
 {
     public int helixRegionIndex;
+}
+
+/// <summary>
+/// 다음 단계로 내려갈 수 있는(클릭 가능한) 세그먼트를 기본색과 강조색 사이에서 점멸시킨다.
+/// 위상(phase)을 세그먼트마다 어긋나게 주면 구간을 따라 흐르는 파동처럼 보여 시선을 끈다.
+/// 리본/Helix 루트가 켜져 있을 때만 Update가 돌므로 레벨 전환 시 따로 켜고 끌 필요가 없다.
+/// </summary>
+public class ClickHintPulse : MonoBehaviour
+{
+    private Renderer _renderer;
+    private MaterialPropertyBlock _mpb;
+    private Color _baseColor;
+    private Color _hintColor;
+    private float _speed;
+    private float _phase;
+
+    public void Init(Color baseColor, Color hintColor, float speed, float phase)
+    {
+        _renderer = GetComponent<Renderer>();
+        _mpb = new MaterialPropertyBlock();
+        _baseColor = baseColor;
+        _hintColor = hintColor;
+        _speed = speed;
+        _phase = phase;
+    }
+
+    private void Update()
+    {
+        if (_renderer == null) return;
+        float t = (Mathf.Sin(Time.time * _speed + _phase) + 1f) * 0.5f;
+        Color c = Color.Lerp(_baseColor, _hintColor, t);
+
+        _renderer.GetPropertyBlock(_mpb);
+        _mpb.SetColor("_BaseColor", c);
+        // 머티리얼에 _EMISSION 키워드가 켜져 있으면(RuntimeMaterials.Solid) 발광까지 얹힌다
+        _mpb.SetColor("_EmissionColor", c * (0.3f + t * 1.2f));
+        _renderer.SetPropertyBlock(_mpb);
+    }
 }

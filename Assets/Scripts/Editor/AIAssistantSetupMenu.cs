@@ -69,7 +69,8 @@ public static class AIAssistantSetupMenu
     [MenuItem("Tools/Taming Mutants/AI 비서 생성")]
     public static void CreateAssistant()
     {
-        var existing = Object.FindFirstObjectByType<AIAssistantFollower>();
+        // 이제 비서는 편집 모드에서 비활성 상태로 저장되므로 비활성까지 뒤져야 기존 것을 찾는다.
+        var existing = Object.FindFirstObjectByType<AIAssistantFollower>(FindObjectsInactive.Include);
         if (existing != null)
         {
             bool replace = EditorUtility.DisplayDialog(
@@ -193,8 +194,13 @@ public static class AIAssistantSetupMenu
         tester.visual = visual;
         tester.bubble = bubble;
 
+        // Play 버튼을 누르기 전(에디터 편집 모드)에는 비서가 보이지 않아야 한다.
+        // IntroDirector.Awake()가 Play 시작 시점에 다시 켠다.
+        root.SetActive(false);
+
         Selection.activeGameObject = root;
-        Debug.Log("[AIAssistantSetup] AI 비서 캐릭터를 생성했습니다. Play 후 숫자키 1~5로 상태 전환, Space로 말풍선 테스트.");
+        Debug.Log("[AIAssistantSetup] AI 비서 캐릭터를 생성했습니다(편집 모드에서는 비활성). " +
+                  "Play 후 숫자키 1~5로 상태 전환, Space로 말풍선 테스트.");
     }
 
     // --- 파츠 생성 ---

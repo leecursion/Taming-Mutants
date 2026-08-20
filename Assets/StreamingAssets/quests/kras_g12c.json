@@ -1,0 +1,15 @@
+{
+  "id": "kras_g12c",
+  "title": "KRAS G12C 후보물질 도킹",
+  "protein_json": "structures/P01116.json",
+  "target_residue_id": 12,
+  "target_atom_name": "SG",
+  "pocket_residue_ids": [12, 62, 68, 95, 96, 99],
+  "compounds_folder": "compounds",
+  "compound_files": ["compound_A.json", "compound_B.json", "compound_C.json", "compound_D.json"],
+  "entrance_offset": 0.8,
+  "helix_regions": [
+    {"label": "Switch-II Helix (α2)", "start_res_id": 66, "end_res_id": 74},
+    {"label": "α3 Helix", "start_res_id": 87, "end_res_id": 104}
+  ]
+}

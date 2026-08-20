@@ -310,7 +310,8 @@ public static class IntroSetupMenu
         var proteinLoader = Object.FindFirstObjectByType<ProteinLoader>();
         var highlighter = Object.FindFirstObjectByType<MutationHighlighter>();
         var questPanel = Object.FindFirstObjectByType<QuestManagerSpatialUI>();
-        var follower = Object.FindFirstObjectByType<AIAssistantFollower>();
+        // AI 비서는 Play 전에는 비활성 상태로 씬에 있으므로 비활성까지 뒤져야 찾는다.
+        var follower = Object.FindFirstObjectByType<AIAssistantFollower>(FindObjectsInactive.Include);
 
         session.proteinLoader = proteinLoader;
         session.mutationHighlighter = highlighter;

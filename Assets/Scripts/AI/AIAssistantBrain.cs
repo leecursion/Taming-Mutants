@@ -189,13 +189,15 @@ public class AIAssistantBrain : MonoBehaviour
 
         string spoken = string.IsNullOrWhiteSpace(description) ? label : $"{label} — {description}";
 
+        // 같은 부위를 다시 선택해도 즉시 반응해야 한다. Speak(큐 적재)로 두면
+        // 진행 중인 브리핑/LLM 응답 뒤로 밀려 "다시 선택이 안 되는" 것처럼 보인다.
         if (!CanUseLlm)
         {
-            Speak(spoken);
+            SpeakNow(spoken);
             return;
         }
 
-        Speak(spoken);
+        SpeakNow(spoken);
         SetState(AIAssistantState.Thinking);
         client.Ask($"{label}에 대해 두세 문장으로 설명해줘.", BuildContext(label),
             onReply: Speak,

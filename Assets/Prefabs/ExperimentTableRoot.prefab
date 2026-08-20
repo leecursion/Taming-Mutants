@@ -154,7 +154,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 8643928d8708fb14d8be12e590c211a5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  placedPosition: {x: 0, y: 0.8, z: 1.2}
+  placedPosition: {x: 0, y: 0.8, z: -1}
   placedEulerRotation: {x: 0, y: 0, z: 0}
 --- !u!1 &4750915772746554178
 GameObject:
@@ -205,9 +205,9 @@ MonoBehaviour:
   remoteJsonUrl: 
   atomPrefab: {fileID: 7306721727455195042, guid: 2e3ecaf6d8f30824c901329ebc6aa059, type: 3}
   bondPrefab: {fileID: 5705180872700442042, guid: e06750e4d5b92ea418ef857d272a702b, type: 3}
-  atomScale: 0.25
+  atomScale: 0.13
   bondCovalentMaxDistance: 1.9
-  bondRadiusScale: 0.05
+  bondRadiusScale: 0.04
   showBackboneOnly: 0
 --- !u!114 &5289168045290359337
 MonoBehaviour:
