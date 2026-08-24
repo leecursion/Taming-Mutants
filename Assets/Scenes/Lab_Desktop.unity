@@ -1197,9 +1197,7 @@ MonoBehaviour:
   boxSize: 0.45
   spacing: 0.12
   outerPadding: 0.07
-  frameColor: {r: 0.25, g: 0.75, b: 1, a: 1}
   cellFrameColor: {r: 0.2, g: 0.35, b: 0.45, a: 1}
-  frameThickness: 0.008
   moleculeSpinSpeed: 25
   autoPlace: 1
   placeRelativeToCamera: 0

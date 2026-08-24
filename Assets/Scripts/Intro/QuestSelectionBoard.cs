@@ -44,6 +44,13 @@ public class QuestSelectionBoard : MonoBehaviour
     public float cardHeight = 240f;
     public float cardSpacing = 20f;
 
+    [Header("페이지네이션")]
+    [Tooltip("한 페이지에 보여줄 카드 수. 퀘스트가 계속 늘어나면 카드가 화면 비율에 맞춰 " +
+             "한없이 작아지므로(fitToViewport), 이 수를 넘으면 '다음' 버튼으로 페이지를 나눈다.")]
+    public int cardsPerPage = 3;
+    [Tooltip("페이지 이동 버튼/표시줄 높이 (캔버스 단위)")]
+    public float pagerHeight = 64f;
+
     [Header("선명도")]
     [Tooltip("화면 픽셀 1개를 몇 배로 구울지")]
     public float supersample = 2f;
@@ -68,11 +75,22 @@ public class QuestSelectionBoard : MonoBehaviour
     private CanvasScaler _scaler;
     private CanvasGroup _group;
     private RectTransform _content;
+    private RectTransform _cardsContainer;
     private readonly List<CanvasGroup> _cardGroups = new List<CanvasGroup>();
     private Coroutine _revealRoutine;
+    private Coroutine _pageRevealRoutine;
     private Camera _camera;
     private int _largestFontSize;
     private bool _built;
+    private int _currentPage;
+    private GameObject _pagerRow;
+    private Text _pageLabel;
+    private Button _prevButton;
+    private Button _nextButton;
+
+    private int PageCount => catalog == null || catalog.Count == 0
+        ? 1
+        : Mathf.CeilToInt(catalog.Count / (float)Mathf.Max(cardsPerPage, 1));
 
     private void Awake()
     {
@@ -223,6 +241,10 @@ public class QuestSelectionBoard : MonoBehaviour
         IsVisible = true;
         gameObject.SetActive(true);
 
+        // 다시 열 때는 항상 1페이지부터 — 이전에 어디까지 넘겨봤는지는 기억하지 않는다.
+        _currentPage = 0;
+        RebuildCardsForCurrentPage();
+
         if (_revealRoutine != null) StopCoroutine(_revealRoutine);
         _revealRoutine = StartCoroutine(RevealRoutine());
     }
@@ -364,7 +386,8 @@ public class QuestSelectionBoard : MonoBehaviour
         fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
 
         BuildHeader(contentGo.transform);
-        BuildCards(contentGo.transform);
+        BuildCardsContainer(contentGo.transform);
+        BuildPager(contentGo.transform);
     }
 
     private void BuildHeader(Transform parent)
@@ -378,22 +401,173 @@ public class QuestSelectionBoard : MonoBehaviour
         element.preferredHeight = 62f;
     }
 
-    private void BuildCards(Transform parent)
+    /// <summary>
+    /// 카드가 실제로 들어갈 빈 컨테이너만 미리 만들어둔다. 내용물은 <see cref="RebuildCardsForCurrentPage"/>가
+    /// 페이지가 바뀔 때마다 채운다 — 퀘스트 전체를 한 번에 쌓지 않아야 카드 수가 늘어나도
+    /// fitToViewport 스케일이 페이지당 카드 수 기준으로 일정하게 유지된다.
+    /// </summary>
+    private void BuildCardsContainer(Transform parent)
     {
+        var containerGo = new GameObject("Cards", typeof(RectTransform));
+        containerGo.transform.SetParent(parent, false);
+        _cardsContainer = (RectTransform)containerGo.transform;
+
+        var layout = containerGo.AddComponent<VerticalLayoutGroup>();
+        layout.spacing = cardSpacing;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+
+        var fitter = containerGo.AddComponent<ContentSizeFitter>();
+        fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
+        fitter.verticalFit = ContentSizeFitter.FitMode.PreferredSize;
+    }
+
+    /// <summary>
+    /// 현재 페이지에 해당하는 카드만 새로 만든다. 페이지 전환 때마다 기존 카드를 지우고
+    /// 다시 채우는 방식이라 카드 수는 항상 cardsPerPage 이하로 유지된다.
+    /// </summary>
+    private void RebuildCardsForCurrentPage()
+    {
+        // 비활성화까지 먼저 해둬야 한다 — Destroy는 이번 프레임 끝까지 계층에 남아 있어서,
+        // 곧바로 이어지는 레이아웃 재계산(ForceRebuildLayoutImmediate)이 지워질 카드까지
+        // 포함해 잘못된 높이를 잡거나, 잠깐이나마 클릭을 받는 유령 카드가 생길 수 있다.
+        foreach (Transform child in _cardsContainer)
+        {
+            child.gameObject.SetActive(false);
+            Destroy(child.gameObject);
+        }
         _cardGroups.Clear();
 
         if (catalog == null || catalog.Count == 0)
         {
             Debug.LogWarning("[QuestSelectionBoard] 카탈로그가 비어 있습니다. " +
                              "Tools > Taming Mutants > 인트로 + 퀘스트 카탈로그 생성 을 실행하세요.", this);
-            return;
+        }
+        else
+        {
+            int perPage = Mathf.Max(cardsPerPage, 1);
+            int start = _currentPage * perPage;
+            int end = Mathf.Min(start + perPage, catalog.Count);
+
+            for (int i = start; i < end; i++)
+            {
+                QuestDefinition quest = catalog.Get(i);
+                if (quest != null) BuildCard(_cardsContainer, quest);
+            }
         }
 
-        for (int i = 0; i < catalog.Count; i++)
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
+        UpdatePagerState();
+    }
+
+    /// <summary>다음/이전 페이지로 이동. 이미 보이는 보드라면 새 카드만 짧게 페이드인한다.</summary>
+    private void GoToPage(int page)
+    {
+        int clamped = Mathf.Clamp(page, 0, PageCount - 1);
+        if (clamped == _currentPage) return;
+
+        _currentPage = clamped;
+        RebuildCardsForCurrentPage();
+
+        if (_pageRevealRoutine != null) StopCoroutine(_pageRevealRoutine);
+        _pageRevealRoutine = StartCoroutine(RevealCardsRoutine());
+    }
+
+    private IEnumerator RevealCardsRoutine()
+    {
+        foreach (CanvasGroup card in _cardGroups) card.alpha = 0f;
+
+        foreach (CanvasGroup card in _cardGroups)
         {
-            QuestDefinition quest = catalog.Get(i);
-            if (quest != null) BuildCard(parent, quest);
+            StartCoroutine(FadeGroup(card, 1f));
+            if (cardStagger > 0f) yield return new WaitForSeconds(cardStagger);
         }
+
+        _pageRevealRoutine = null;
+    }
+
+    /// <summary>
+    /// 카드 아래 이전/다음 버튼 + 페이지 표시줄. 퀘스트가 한 페이지 안에 다 들어가면
+    /// (PageCount <= 1) 아예 만들지 않아 불필요한 UI가 남지 않는다 — 대신 카탈로그가 비었을 때도
+    /// 로우만은 만들어두고 비활성화해, 나중에 카탈로그가 채워져도 다시 지을 필요가 없게 한다.
+    /// </summary>
+    private void BuildPager(Transform parent)
+    {
+        var rowGo = new GameObject("Pager", typeof(RectTransform));
+        rowGo.transform.SetParent(parent, false);
+        _pagerRow = rowGo;
+
+        var element = rowGo.AddComponent<LayoutElement>();
+        element.minHeight = pagerHeight;
+        element.preferredHeight = pagerHeight;
+
+        var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
+        layout.spacing = 18f;
+        layout.childAlignment = TextAnchor.MiddleCenter;
+        layout.childControlWidth = false;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = false;
+        layout.childForceExpandHeight = true;
+
+        _prevButton = BuildPagerButton(rowGo.transform, "◀ 이전", () => GoToPage(_currentPage - 1));
+        _pageLabel = CreateText(rowGo.transform, "PageLabel", 30, FontStyle.Bold,
+            new Color(bodyColor.r, bodyColor.g, bodyColor.b, 0.85f));
+        _pageLabel.alignment = TextAnchor.MiddleCenter;
+        var labelElement = _pageLabel.gameObject.AddComponent<LayoutElement>();
+        labelElement.preferredWidth = 140f;
+        _nextButton = BuildPagerButton(rowGo.transform, "다음 ▶", () => GoToPage(_currentPage + 1));
+    }
+
+    private Button BuildPagerButton(Transform parent, string label, UnityEngine.Events.UnityAction onClick)
+    {
+        var go = new GameObject($"Button_{label}", typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+
+        var goElement = go.AddComponent<LayoutElement>();
+        goElement.preferredWidth = 180f;
+
+        // 카드/뒤로가기 버튼과 같은 홀로그램 3겹(글로우 -> 패널 -> 외곽선) 톤을 맞춘다.
+        CreateLayer(go.transform, "Glow", HoloSpriteFactory.Glow(), new Color(1f, 1f, 1f, 0.12f), 14f);
+        Image panel = CreateLayer(go.transform, "Panel", HoloSpriteFactory.Panel(), panelColor, 0f,
+            raycastTarget: true);
+        CreateLayer(go.transform, "Stroke", HoloSpriteFactory.Stroke(), new Color(1f, 1f, 1f, 0.5f), 0f);
+
+        Text text = CreateText(go.transform, "Label", 28, FontStyle.Bold, Color.white);
+        text.alignment = TextAnchor.MiddleCenter;
+        var textRect = (RectTransform)text.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+        text.text = label;
+
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = panel;
+        button.transition = Selectable.Transition.ColorTint;
+        var colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.35f, 1.35f, 1.35f, 1f);
+        colors.pressedColor = new Color(0.8f, 0.8f, 0.8f, 1f);
+        colors.disabledColor = new Color(1f, 1f, 1f, 0.35f);
+        colors.fadeDuration = 0.12f;
+        button.colors = colors;
+        button.onClick.AddListener(onClick);
+
+        return button;
+    }
+
+    /// <summary>페이지가 하나뿐이면 이전/다음 버튼과 표시줄을 통째로 숨긴다.</summary>
+    private void UpdatePagerState()
+    {
+        bool multiPage = PageCount > 1;
+        if (_pagerRow != null) _pagerRow.SetActive(multiPage);
+        if (!multiPage) return;
+
+        if (_prevButton != null) _prevButton.interactable = _currentPage > 0;
+        if (_nextButton != null) _nextButton.interactable = _currentPage < PageCount - 1;
+        if (_pageLabel != null) _pageLabel.text = $"{_currentPage + 1} / {PageCount}";
     }
 
     private void BuildCard(Transform parent, QuestDefinition quest)

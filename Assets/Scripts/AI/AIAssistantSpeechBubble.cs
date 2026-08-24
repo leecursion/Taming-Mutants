@@ -105,6 +105,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
 
         CacheAccentAlphas();
         ApplyOsFont();
+        ApplyAlwaysOnTopMaterial();
 
         if (canvasGroup != null) canvasGroup.alpha = 0f;
         if (bubbleRect != null) bubbleRect.gameObject.SetActive(false);
@@ -124,6 +125,33 @@ public class AIAssistantSpeechBubble : MonoBehaviour
 
         foreach (var text in GetComponentsInChildren<Text>(includeInactive: true))
             text.font = font;
+    }
+
+    // 말풍선 하나로 충분 — 여러 비서 인스턴스가 생겨도 같은 셰이더 머티리얼을 공유한다
+    // (Image/Text는 실제 텍스처를 CanvasRenderer가 그래픽별로 따로 바인딩하므로 안전하다).
+    private static Material _alwaysOnTopMaterial;
+
+    /// <summary>
+    /// 말풍선 캔버스는 World Space라 기본적으로 씬의 3D 배경과 똑같이 뎁스 테스트를 받는다.
+    /// 배경(실험실 모델의 벽/선반 등)이 카메라와 말풍선 사이에 있으면 그대로 잘려 보이는데,
+    /// 배경이 어떻게 배치되든 항상 위에 그려지도록 ZTest Always 셰이더로 덮어씌운다.
+    /// </summary>
+    private void ApplyAlwaysOnTopMaterial()
+    {
+        if (_alwaysOnTopMaterial == null)
+        {
+            Shader shader = Shader.Find("Custom/UI_AlwaysOnTop");
+            if (shader == null)
+            {
+                Debug.LogWarning("[AIAssistantSpeechBubble] 'Custom/UI_AlwaysOnTop' 셰이더를 찾지 못해 " +
+                                 "말풍선이 기본 뎁스 테스트를 따릅니다(배경에 가려질 수 있음).");
+                return;
+            }
+            _alwaysOnTopMaterial = new Material(shader) { name = "UI_AlwaysOnTop (AIAssistantSpeechBubble)" };
+        }
+
+        foreach (var graphic in GetComponentsInChildren<Graphic>(includeInactive: true))
+            graphic.material = _alwaysOnTopMaterial;
     }
 
     /// <summary>

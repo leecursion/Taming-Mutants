@@ -38,7 +38,12 @@ public class StructureLevelController : MonoBehaviour
     public List<HelixRegion> helixRegions = new List<HelixRegion>();
 
     [Header("표시 색상")]
-    public Color ribbonColor = new Color(0.2f, 0.6f, 1f);
+    [Tooltip("리본 단계의 이차구조 색상. PyMOL/ChimeraX 기본 배색과 같다 — " +
+             "알파나선 마젠타, 베타가닥 노랑, 루프/코일 흰색·회색. " +
+             "SecondaryStructureAssigner가 Cα 트레이스만으로 추정한 이차구조를 이 색으로 칠한다.")]
+    public Color ssHelixColor = new Color(0.78f, 0.2f, 0.85f);
+    public Color ssStrandColor = new Color(1f, 0.92f, 0.15f);
+    public Color ssLoopColor = new Color(0.82f, 0.82f, 0.85f);
     public Color helixColor = new Color(1f, 0.6f, 0.1f);
 
     [Header("두께 (실제 반지름, unit 단위 — segmentPrefab의 기본 스케일과 무관)")]
@@ -176,6 +181,7 @@ public class StructureLevelController : MonoBehaviour
     private void BuildRibbon(ProteinLoader.ProteinData data)
     {
         var trace = ExtractCaTrace(data);
+        var secondaryStructure = SecondaryStructureAssigner.Assign(trace);
 
         GameObject rootGo = new GameObject("RibbonView");
         rootGo.transform.SetParent(transform, false);
@@ -183,8 +189,10 @@ public class StructureLevelController : MonoBehaviour
 
         for (int i = 0; i < trace.Count - 1; i++)
         {
+            Color segColor = ColorForSecondaryStructure(secondaryStructure[i]);
+
             GameObject seg = CreateSegment(trace[i].Value, trace[i + 1].Value, _ribbonRoot, ribbonRadius);
-            TintSegment(seg, ribbonColor);
+            TintSegment(seg, segColor);
             var info = seg.AddComponent<RibbonSegmentInfo>();
             info.residueIdA = trace[i].Key;
             info.residueIdB = trace[i + 1].Key;
@@ -192,7 +200,17 @@ public class StructureLevelController : MonoBehaviour
             // 클릭 시 Helix로 내려갈 수 있는 구간만 점멸 — 클릭해도 반응 없는 곳은 그대로 둔다
             if (pulseClickableSegments && FindHelixRegionIndex(trace[i].Key) >= 0)
                 seg.AddComponent<ClickHintPulse>()
-                   .Init(ribbonColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
+                   .Init(segColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
+        }
+    }
+
+    private Color ColorForSecondaryStructure(SecondaryStructureAssigner.Type type)
+    {
+        switch (type)
+        {
+            case SecondaryStructureAssigner.Type.Helix: return ssHelixColor;
+            case SecondaryStructureAssigner.Type.Strand: return ssStrandColor;
+            default: return ssLoopColor;
         }
     }
 
@@ -302,10 +320,15 @@ public class StructureLevelController : MonoBehaviour
         return -1;
     }
 
+    /// <summary>이미 최상위(Ribbon)에서 한 번 더 나가려 할 때 발생 — 구조를 벗어나 퀘스트 선택으로
+    /// 돌아가는 건 이 컨트롤러의 책임이 아니라서, 듣고 싶은 쪽(IntroDirector)에 맡긴다.</summary>
+    public event Action OnExitRequested;
+
     public void GoBack()
     {
         if (CurrentLevel == ViewLevel.AminoAcid) SetLevel(ViewLevel.Helix);
         else if (CurrentLevel == ViewLevel.Helix) SetLevel(ViewLevel.Ribbon);
+        else OnExitRequested?.Invoke();
     }
 
     public void SetLevel(ViewLevel level)
