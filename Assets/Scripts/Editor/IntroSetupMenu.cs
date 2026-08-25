@@ -23,6 +23,17 @@ public static class IntroSetupMenu
     [MenuItem("Tools/Taming Mutants/인트로 + 퀘스트 카탈로그 생성")]
     public static void Setup()
     {
+        // Play 모드 중에는 EditorSceneManager.MarkSceneDirty가 예외를 던진다 — 그 전에 만든
+        // 씬 오브젝트는 만들어지긴 하지만 Play를 멈추는 순간 사라져 씬에 남지 않는다.
+        if (EditorApplication.isPlaying)
+        {
+            EditorUtility.DisplayDialog("인트로 구성 실패",
+                "Play 모드 중에는 실행할 수 없습니다.\n\n" +
+                "Play를 멈춘 뒤(편집 모드) 다시 실행하세요 — Play 중에 만든 오브젝트는 " +
+                "Play를 멈추는 순간 사라져 씬에 남지 않습니다.", "확인");
+            return;
+        }
+
         QuestCatalog catalog = BuildCatalog();
         BuildSceneObjects(catalog);
 
@@ -48,8 +59,16 @@ public static class IntroSetupMenu
         FillAbl1T315I(abl1);
         EditorUtility.SetDirty(abl1);
 
+        QuestDefinition cftr = LoadOrCreate<QuestDefinition>(QuestFolder + "/Quest_CFTR_F508del.asset");
+        FillCftrF508del(cftr);
+        EditorUtility.SetDirty(cftr);
+
+        QuestDefinition p53 = LoadOrCreate<QuestDefinition>(QuestFolder + "/Quest_P53_Y220C.asset");
+        FillP53Y220C(p53);
+        EditorUtility.SetDirty(p53);
+
         QuestCatalog catalog = LoadOrCreate<QuestCatalog>(CatalogPath);
-        catalog.quests = new[] { kras, egfr, abl1 };
+        catalog.quests = new[] { kras, egfr, abl1, cftr, p53 };
         EditorUtility.SetDirty(catalog);
 
         return catalog;
@@ -490,6 +509,379 @@ public static class IntroSetupMenu
                 affinityKcalPerMol = 0f,
                 resultMessage = "이 화합물은 ATP 포켓과 자리를 다투지 않아요 — 반대쪽 끝의 '미리스토일 " +
                                 "자리'라는 완전히 다른 곳에 붙는 방식이라, 여기서는 가까이 가자마자 밀려났어요.",
+            },
+        };
+    }
+
+    /// <summary>
+    /// 사건 4: 닫혀버린 문 (CFTR F508del).
+    /// 앞선 세 사건과 달리 정답이 하나가 아니라 "corrector로 세포막 도달 -> potentiator로
+    /// channel 개방" 두 단계를 순서대로 완료해야 하는 시나리오다. DockingQuestController가
+    /// CompoundData.requires_prior_success_id/completes_stage를 봐서 순서를 강제한다 —
+    /// potentiator(ivacaftor_like)를 먼저 고르면 오답이 아니라 "순서 오류" 안내로 corrector
+    /// 단계로 되돌린다. 구조는 AlphaFold 예측이 아니라 실제 cryo-EM 구조(RCSB 8EJ1)를 쓴다 —
+    /// F508del은 결실(deletion)이라 508번 자리가 구조에 아예 존재하지 않기 때문에,
+    /// AlphaFold(WT 서열 예측)로는 이 결실 자체를 표현할 수 없다.
+    /// </summary>
+    private static void FillCftrF508del(QuestDefinition quest)
+    {
+        quest.questId = "cftr_f508del";
+        quest.title = "CFTR F508del";
+        quest.subtitle = "사건 4: 닫혀버린 문";
+        quest.gene = "CFTR";
+        quest.mutation = "F508del";
+        quest.difficulty = 4;
+        quest.accent = new Color(0.3f, 0.9f, 0.65f);
+        quest.summary = "이번엔 폐 이야기예요. 낭포성 섬유증을 앓는 환자의 세포막에는 염소 이온이 드나드는 " +
+                        "문(CFTR 채널)이 있어야 하는데, 508번 자리의 아미노산이 통째로 빠지면서 그 문이 " +
+                        "세포막까지 가지도 못하고 있대요. 신입 연구원인 당신이 이번엔 두 가지 약을 순서대로 " +
+                        "조합해서 문을 다시 열어 주세요!";
+
+        quest.structureStreamingPath = "structures/8EJ1.json";
+        quest.mutationResidueIds = new[] { 507, 509 }; // 508 자체는 결실이라 구조에 없음 — 양옆 잔기로 표시
+        quest.targetPocketLabel = "F508 결실 주변, NBD1 접힘 자리";
+
+        quest.stages = new[]
+        {
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest1_DiseaseAnalysis,
+                title = "1화 · 숨쉬기 힘든 이유",
+                objective = "낭포성 섬유증이 왜 생기는지, CFTR 단백질의 508번 자리에 무슨 일이 일어났는지 알아보자.",
+                assistantLines = new[]
+                {
+                    "이번 사건은 폐와 관련이 있어. 낭포성 섬유증이라는 병에 걸린 환자의 세포를 살펴볼 거야.",
+                    "CFTR이라는 단백질은 원래 세포막에서 염소 이온(Cl⁻)이 드나드는 문 역할을 해. 그런데 이 " +
+                    "환자는 그 문이 아예 세포막까지 가지도 못했대.",
+                    "설계도를 보니 508번 자리의 아미노산 하나가 통째로 빠져 있어. 이게 F508del이라는 돌연변이야.",
+                },
+                hints = new[] { "508번 자리를 찾아봐 — 그런데 그 자리는 통째로 비어있을 거야. 그게 바로 단서야." },
+                llmContext = "CFTR은 상피세포 막에서 Cl- 이온을 내보내는 통로 단백질이다. F508del은 508번 " +
+                             "페닐알라닌이 통째로 없어지는 결실(deletion) 돌연변이로, 단백질이 제대로 접히지 " +
+                             "못해(misfolding) 세포 안(소포체)에서 분해되고, 세포막까지 도달하지 못한다. 그 " +
+                             "결과 Cl- 이동과 물 이동이 막혀 점액이 끈적해진다(낭포성 섬유증).",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest2_ProteinStructure,
+                title = "2화 · 불안정한 구조",
+                objective = "접히지 못하고 불안정하게 흔들리는 CFTR의 507/509번 자리 주변을 살펴보자.",
+                assistantLines = new[]
+                {
+                    "이 구조를 봐 — 508번 자리가 있어야 할 곳이 비어 있어서 그 주변(507, 509번)이 계속 흔들리고 있어.",
+                    "이렇게 불안정한 모양으로는 세포가 '불량품'이라고 판단해서 밖으로 내보내지 않고 분해해 버려.",
+                },
+                hints = new[] { "507번과 509번 자리를 클릭해봐. 빨갛게 반짝이며 흔들리고 있어." },
+                llmContext = "F508del CFTR은 NBD1 도메인의 folding이 불안정해지고, NBD1과 막관통 도메인(TMD) " +
+                             "사이의 조립도 약해진다. 세포는 품질관리 시스템(ERAD)을 통해 이 불안정한 단백질을 " +
+                             "인식해 분해해 버리므로, 애초에 세포막에 도달하는 양 자체가 크게 줄어든다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest3_TargetDiscovery,
+                title = "3화 · 두 가지 문제, 두 가지 해결책",
+                objective = "이 CFTR에게 필요한 두 가지 도움 — '접히도록 돕는 것'과 '열리도록 돕는 것'을 구분해보자.",
+                assistantLines = new[]
+                {
+                    "이 사건은 문제가 두 개야. 첫째, 접힘이 불안정해서 세포막까지 못 간다는 것. 둘째, " +
+                    "설령 막에 도달해도 문이 잘 안 열린다는 것.",
+                    "그래서 약도 두 종류가 필요해 — 접히게 도와주는 'corrector'와, 문을 열어주는 'potentiator'.",
+                },
+                hints = new[] { "순서가 중요해 — 문을 열어줄 약도, 문 자체가 세포막에 없으면 소용없겠지?" },
+                llmContext = "Corrector(예: Lumacaftor, Tezacaftor, Elexacaftor)는 CFTR의 folding/조립을 도와 " +
+                             "세포막 도달량(surface CFTR)을 늘린다. Potentiator(예: Ivacaftor)는 이미 막에 " +
+                             "도달한 CFTR의 channel gating(열리는 정도)을 늘린다. 두 기전은 독립적이라, " +
+                             "potentiator만으로는 애초에 막에 CFTR이 거의 없어 효과가 매우 제한적이다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest4_CandidateEvaluation,
+                title = "4화 · 다섯 개의 약, 두 번의 선택",
+                objective = "후보물질 5종 중, 먼저 CFTR을 세포막으로 보내줄 corrector를 찾고, 그다음 문을 " +
+                            "열어줄 potentiator를 찾아보자.",
+                assistantLines = new[]
+                {
+                    "후보물질을 다섯 개 준비했어. 이번엔 정답이 두 개야 — 순서대로 골라야 해.",
+                    "Corrector부터 골라서 CFTR을 세포막까지 보내고, 그다음 potentiator로 문을 열어줘.",
+                    "게임에서 이 순서로 배우는 건 '작용 원리를 이해하기 위한 순서'야 — 실제 병원에서 약을 " +
+                    "먹는 순서(복약 순서)와는 다를 수 있어. (Mechanistic learning sequence ≠ clinical " +
+                    "dosing sequence)",
+                },
+                hints = new[]
+                {
+                    "Potentiator를 먼저 써보면, '아직은 이르다'는 안내가 나올 거야 — 그럼 corrector부터 " +
+                    "다시 시작해봐.",
+                    "Lumacaftor 같은 초기 세대 corrector는 일부만 회복시켜줘. 최종 완료엔 더 강력한 조합이 필요해.",
+                },
+                llmContext = "정답은 corrector_pair(Elexacaftor+Tezacaftor 유사) -> ivacaftor_like(potentiator) " +
+                             "순서로 두 화합물을 모두 성공시켜야 완료된다. Ivacaftor-like를 먼저 고르면 " +
+                             "오답이 아니라 '순서 오류' 안내가 나오고, corrector 단계로 돌아가라는 힌트를 " +
+                             "준다. Lumacaftor-like는 부분 회복만 보여주고 최종 완료 조건은 아니다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest5_Verification,
+                title = "5화 · 다시 열린 문",
+                objective = "채널이 열리고 Cl⁻ 이온이 흐르기 시작한 결과를 확인하고 사건을 마무리하자.",
+                assistantLines = new[]
+                {
+                    "corrector와 potentiator가 함께 작용하니 CFTR이 드디어 세포막에서 문을 열었어!",
+                    "Cl⁻ 이온이 흐르기 시작하면서 기도 표면의 액체층(airway surface liquid)이 늘고, " +
+                    "끈적했던 점액도 묽어지고 있어.",
+                    "섬모(cilia)도 다시 움직이기 시작했어 — 이제 점액을 밖으로 밀어낼 수 있어!",
+                },
+                hints = new[]
+                {
+                    "약이 하나가 아니라 두 개가 함께 필요했다는 걸 기억해줘 — 접히는 문제와 열리는 문제는 " +
+                    "서로 다른 문제였어.",
+                },
+                llmContext = "Corrector+potentiator 병용(예: Trikafta = Elexacaftor/Tezacaftor/Ivacaftor)은 " +
+                             "surface CFTR을 늘리고 channel gating도 함께 개선해, 상피세포의 Cl-/수분 이동을 " +
+                             "회복시킨다. 그 결과 airway surface liquid가 늘고 점액 점도가 낮아지며 섬모 " +
+                             "운동(mucociliary clearance)이 회복된다.",
+            },
+        };
+
+        quest.candidates = new[]
+        {
+            new CandidateCompound
+            {
+                displayName = "Corrector Pair — Elexacaftor + Tezacaftor-like",
+                subtitle = "상보적 Corrector 조합",
+                features = "상보적인 corrector 작용으로 F508del CFTR의 folding/domain assembly와 " +
+                           "세포막 도달량을 개선",
+                isCorrect = true,
+                affinityKcalPerMol = -7.8f,
+                resultMessage = "Snap! 상보적인 corrector 작용으로 CFTR의 접힘과 도메인 조립이 좋아지고, " +
+                                "세포막까지 도달하는 양이 늘었어요. Surface CFTR ↑",
+            },
+            new CandidateCompound
+            {
+                displayName = "Ivacaftor-like",
+                subtitle = "Potentiator",
+                features = "세포막에 도달한 CFTR의 channel opening을 증가시킴",
+                isCorrect = true,
+                affinityKcalPerMol = -8.5f,
+                resultMessage = "성공! 막에 자리 잡은 CFTR의 문(gate)이 열리면서 Cl⁻ 이온이 흐르기 " +
+                                "시작했어요. Channel activity ↑",
+            },
+            new CandidateCompound
+            {
+                displayName = "Lumacaftor-like",
+                subtitle = "초기 세대 Corrector",
+                features = "F508del CFTR을 rescue하는 corrector 계열이지만 최신 조합 대비 제한적인 회복만 보여줌",
+                isCorrect = false,
+                affinityKcalPerMol = -3.0f,
+                resultMessage = "구조 흔들림이 조금 줄었어요 — Surface CFTR: LOW → PARTIAL. 다음 단계엔 " +
+                                "더 효과적인 corrector 조합이 필요해요.",
+            },
+            new CandidateCompound
+            {
+                displayName = "Proteasome Inhibitor-like",
+                subtitle = "경로 차단",
+                features = "misfolded protein의 분해 자체를 막으려는 접근",
+                isCorrect = false,
+                affinityKcalPerMol = 1.5f,
+                resultMessage = "분해 신호는 줄었지만 불안정한 CFTR 상태는 그대로예요. ER stress 경고가 " +
+                                "떴어요. Blocking disposal does not correct folding.",
+            },
+            new CandidateCompound
+            {
+                displayName = "KRAS G12C Inhibitor-like",
+                subtitle = "표적 불일치",
+                features = "사건 1(KRAS)에서 사용한 mutant KRAS 표적 저해제 계열",
+                isCorrect = false,
+                affinityKcalPerMol = 4.0f,
+                resultMessage = "CFTR 근처에서는 결합 자리가 전혀 맞지 않아요. Right drug class, wrong molecular target.",
+            },
+        };
+    }
+
+    /// <summary>
+    /// 사건 5: 뜨거워지면 무너지는 방패 (p53 Y220C).
+    /// 구조는 2026년에 막 공개된 실제 결정구조(RCSB 9S9O — Mavridi et al., Cell Death Dis 2026,
+    /// "Targeting the p53 cancer mutants Y220C ... with the small-molecule stabilizer rezatapopt")를
+    /// 직접 파싱해 썼다. 정답 후보물질(p53_stabilizer.json)도 이 구조에서 실제로 결합해 있던
+    /// Rezatapopt 리간드 좌표를 그대로 쓰고, 부분 정답(p53_fragment.json)은 2VUK의 PhiKan083
+    /// 좌표를 쓴다 — 둘 다 가상의 화합물이 아니라 실재하는 분자다.
+    /// </summary>
+    private static void FillP53Y220C(QuestDefinition quest)
+    {
+        quest.questId = "p53_y220c";
+        quest.title = "p53 Y220C";
+        quest.subtitle = "사건 5: 뜨거워지면 무너지는 방패";
+        quest.gene = "TP53";
+        quest.mutation = "Y220C";
+        quest.difficulty = 5;
+        quest.accent = new Color(1f, 0.45f, 0.3f);
+        quest.summary = "p53은 손상된 세포가 계속 자라지 못하게 막는, 우리 몸의 '방패' 같은 단백질이에요. " +
+                        "그런데 220번 자리가 바뀐 세포에서는 이 방패가 체온 정도의 열에도 흔들리다가 " +
+                        "제 역할을 못 하게 된대요. 신입 연구원인 당신이 이 흔들리는 방패를 다시 " +
+                        "단단하게 붙잡아 줄 분자를 찾아 주세요!";
+
+        quest.structureStreamingPath = "structures/P53_Y220C_9S9O.json";
+        quest.mutationResidueIds = new[] { 220 };
+        quest.targetPocketLabel = "220번 자리 옆에 새로 생긴 틈 (Y220C pocket)";
+
+        quest.stages = new[]
+        {
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest1_DiseaseAnalysis,
+                title = "1화 · 흔들리는 방패",
+                objective = "p53이라는 방패 단백질에서, 220번 자리가 바뀌며 생긴 문제를 확인하자.",
+                assistantLines = new[]
+                {
+                    "p53은 손상된 세포가 더 퍼지지 않게 막는 방패 단백질이야. '유전체의 수호자'라고도 불려.",
+                    "그런데 220번 자리의 아미노산 하나가 바뀌면서, 방패의 접힘이 헐거워졌어.",
+                    "헐거워진 접힘은 온도에 특히 약해. 몸속 온도(37°C) 정도에서도 흔들릴 수 있어.",
+                },
+                hints = new[]
+                {
+                    "220번 자리를 찾아봐. 다른 곳보다 유독 헐거워 보일 거야.",
+                    "정상 p53과 비교하면 이 자리 하나만 다르다는 걸 알 수 있어.",
+                },
+                llmContext = "p53(TP53 유전자)은 DNA 손상을 감지해 세포주기를 멈추거나 세포를 없애는 " +
+                             "종양억제단백질이다. Y220C는 접힘 안정성을 낮추는 '불안정화 변이'로, " +
+                             "코돈을 직접 손상시키는 KRAS/EGFR류 변이와 달리 단백질이 정상적으로 " +
+                             "번역되고도 온도에 취약해져 풀려버리는 것이 문제다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest2_ProteinStructure,
+                title = "2화 · 온도를 올려보기",
+                objective = "20~60°C 온도 슬라이더를 움직여, 온도가 오를수록 방패가 얼마나 흔들리는지 관찰하자.",
+                assistantLines = new[]
+                {
+                    "슬라이더로 온도를 올려볼게. 흔들림(wobble)이 점점 커지는 게 보이지?",
+                    "체온인 37°C에서도 이미 꽤 불안정해. 이게 이 사건의 핵심이야 — 완전히 풀리진 않지만, 원래보다 훨씬 약해.",
+                    "온도를 더 올리면 주변에 흐릿한 입자도 늘어나. 단백질끼리 엉겨 붙을 위험 신호야.",
+                },
+                hints = new[]
+                {
+                    "슬라이더를 천천히 움직이며 HUD의 Stability/Wobble 수치를 같이 봐봐.",
+                    "37°C 근처에서 멈춰서 화면에 뜨는 안내문을 읽어봐.",
+                },
+                llmContext = "실제 논문 데이터에 기반한 연출이다 — Y220C는 야생형 p53보다 열 안정성이 " +
+                             "낮아 생리 온도에서도 unfolding 경향이 두드러진다. 다만 '완전히 풀린다'가 " +
+                             "아니라 '정상보다 훨씬 불안정하다'가 정확한 표현이라 화면에서도 그렇게 " +
+                             "표현한다. 온도-wobble-투명도-응집 입자는 실제 분자동역학이 아니라 이 정도 " +
+                             "불안정성을 보여주기 위한 시각적 장치다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest3_TargetDiscovery,
+                title = "3화 · 새로 생긴 틈",
+                objective = "220번 자리 바뀌면서 새로 생긴 작은 틈(포켓)을 찾아 표시하자.",
+                assistantLines = new[]
+                {
+                    "방패 표면 안쪽으로 들어가 볼게. 여기, 원래는 없던 작은 틈이 보이지?",
+                    "이 틈은 방패가 헐거워지면서 생긴 자리야. 여기에 뭔가를 끼워 넣으면 다시 조여줄 수 있어.",
+                },
+                hints = new[]
+                {
+                    "220번 자리 근처를 살펴봐. 다른 곳보다 빈 공간이 넓어.",
+                    "이 틈은 정상 p53에는 없어 — 이 변이에서만 생기는 자리야.",
+                },
+                llmContext = "이 포켓은 Y220C 변이로 소수성 코어에 생기는 표면 결함(surface crevice)이다. " +
+                             "PhiKan083(2008, 2VUK) 같은 초기 fragment부터 최근 rezatapopt(2026, 9S9O)까지, " +
+                             "이 틈에 딱 맞는 분자를 채워 넣어 접힘을 다시 조여주는 'mutant-selective " +
+                             "stabilizer' 전략이 실제로 연구되고 있다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest4_CandidateEvaluation,
+                title = "4화 · 방패를 다시 조이기",
+                objective = "후보물질 5종 중, 이 틈에 맞고 방패를 실제로 단단하게 만들어 주는 것을 찾아보자.",
+                assistantLines = new[]
+                {
+                    "후보물질을 다섯 개 준비했어. 하나씩 틈에 가져다 대 보자.",
+                    "틈에 들어가는 것과, 실제로 흔들림을 잡아주는 건 다른 문제야. 결과 화면(HUD)을 잘 봐.",
+                },
+                hints = new[]
+                {
+                    "작게 들어맞는 것과 딱 맞게 최적화된 것은 안정화 효과가 달라.",
+                    "이 틈이 아니라 완전히 다른 곳(다른 단백질)을 노리는 후보도 섞여 있어.",
+                    "틈에 닿기만 하고 실제로 붙잡지 못하는 후보도 있어 — wobble이 그대로인지 확인해봐.",
+                },
+                llmContext = "다섯 후보는 실제 신약개발 단계를 압축해 보여준다: PhiKan083-like(초기 fragment, " +
+                             "부분 정답)와 rezatapopt-like(최적화된 stabilizer, 정답)는 실존 분자 좌표를 " +
+                             "그대로 쓴다. 나머지 셋(Nutlin-like MDM2 억제제, 비특이적 Cys 반응기, " +
+                             "비선택적 결합체)은 '왜 틀렸는지'가 서로 다른 가상의 오답이다 — 같은 도킹 " +
+                             "판정 로직에 서로 다른 결과 문구만 연결했다.",
+            },
+            new QuestStageBriefing
+            {
+                stage = Stage.Quest5_Verification,
+                title = "5화 · 37°C에서 다시 확인하기",
+                objective = "체온(37°C)에서 안정화 전/후를 비교하고, 방패가 다시 제 역할(DNA 결합)을 하는지 확인하자.",
+                assistantLines = new[]
+                {
+                    "안정화제를 붙인 채로 다시 37°C로 맞춰볼게. Before/After를 비교해 보자.",
+                    "Wobble이 크게 줄고 Stability가 올라갔어! 이제 방패가 원래 하던 일을 다시 할 수 있어.",
+                    "방패 네 개가 모여 DNA를 붙잡는 장면을 보여줄게 — 이게 p53이 원래 하는 일이야.",
+                },
+                hints = new[]
+                {
+                    "Before는 안정화 전, After는 안정화 후 같은 온도에서의 비교야.",
+                    "DNA에 붙는 장면에서 안정화제 분자 자체가 등장하지 않는 건, 그 분자가 방패를 " +
+                    "고쳐준 것이지 방패 네 개가 뭉치는 과정 자체를 만든 게 아니기 때문이야.",
+                },
+                llmContext = "DBD(DNA-binding domain)가 안정화되면 그 결과로 정상적인 사량체(tetramer) " +
+                             "형성과 DNA 결합 능력이 회복된다는 것이 핵심이다. Rezatapopt 같은 stabilizer는 " +
+                             "DBD 접힘을 도와줄 뿐 사량체화 자체를 새로 만들어내는 게 아니므로, 연출에서도 " +
+                             "안정화제 분자는 DNA 결합 장면에 등장시키지 않는다.",
+            },
+        };
+
+        quest.candidates = new[]
+        {
+            new CandidateCompound
+            {
+                displayName = "PhiKan083-like Weak Fragment",
+                subtitle = "부분 정답 — 초기 Fragment Hit (2VUK 실제 좌표)",
+                features = "Y220C mutation-induced pocket에 들어가지만 안정화 효과가 제한적인 초기 fragment",
+                isCorrect = false,
+                affinityKcalPerMol = -3.1f,
+                resultMessage = "Useful fragment hit, but stabilization is insufficient.",
+            },
+            new CandidateCompound
+            {
+                displayName = "Rezatapopt-like Stabilizer",
+                subtitle = "정답 — Optimized Stabilizer (9S9O 실제 좌표)",
+                features = "Y220C pocket에 최적화된 mutant-selective stabilizer",
+                isCorrect = true,
+                affinityKcalPerMol = -9.2f,
+                resultMessage = "Mutant-selective stabilization.",
+            },
+            new CandidateCompound
+            {
+                displayName = "Nutlin-like MDM2 Inhibitor",
+                subtitle = "오답 1 — 다른 p53 전략",
+                features = "p53-MDM2 상호작용을 차단해 p53 분해를 억제하려는 전략. Y220C의 구조적 " +
+                           "불안정성 자체는 교정하지 않음",
+                isCorrect = false,
+                affinityKcalPerMol = 2.5f,
+                resultMessage = "More mutant p53 is not the same as functional p53.",
+            },
+            new CandidateCompound
+            {
+                displayName = "Generic Cys-reactive Warhead",
+                subtitle = "오답 2 — Covalency만 의존",
+                features = "Cys220과 반응할 가능성만 노리는 가상의 electrophilic compound. 포켓 적합성과 " +
+                           "안정화 상호작용은 부족",
+                isCorrect = false,
+                affinityKcalPerMol = 0.8f,
+                resultMessage = "Covalency alone does not guarantee conformational rescue.",
+            },
+            new CandidateCompound
+            {
+                displayName = "Non-selective Surface Binder",
+                subtitle = "오답 3 — 선택성 결여",
+                features = "변이 포켓에 특이적이지 않고 여러 단백질 표면에 비선택적으로 결합하는 가상 후보",
+                isCorrect = false,
+                affinityKcalPerMol = 1.5f,
+                resultMessage = "A stabilizer must also be selective for the intended target state.",
             },
         };
     }

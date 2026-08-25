@@ -11,123 +11,206 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 8dd070ed6dea3ed4589467d315cb624d, type: 3}
   m_Name: Quest_ABL1_T315I
-  m_EditorClassIdentifier:
+  m_EditorClassIdentifier: 
   questId: abl1_t315i
   title: ABL1 T315I
-  subtitle: "사건 3: 되돌아온 신호"
+  subtitle: "\uC0AC\uAC74 3: \uB418\uB3CC\uC544\uC628 \uC2E0\uD638"
   gene: ABL1
   mutation: T315I
-  summary: "18개월 전, 이 환자의 백혈병 세포는 Imatinib이라는 약으로 잠잠해졌어요. 그런데 얼마 전부터
-    신호가 다시 강해지고 있대요. 범인은 ABL1이라는 단백질의 315번 자리에 새로 생긴 변화 — 문지기가
-    바뀌어서 예전 약이 더 이상 안 듣는대요. 신입 연구원인 당신이 이번엔 그 문지기를 피해가는 새로운
-    열쇠를 찾아 주세요!"
+  summary: "18\uAC1C\uC6D4 \uC804, \uC774 \uD658\uC790\uC758 \uBC31\uD608\uBCD1 \uC138\uD3EC\uB294
+    Imatinib\uC774\uB77C\uB294 \uC57D\uC73C\uB85C \uC7A0\uC7A0\uD574\uC84C\uC5B4\uC694.
+    \uADF8\uB7F0\uB370 \uC5BC\uB9C8 \uC804\uBD80\uD130 \uC2E0\uD638\uAC00 \uB2E4\uC2DC
+    \uAC15\uD574\uC9C0\uACE0 \uC788\uB300\uC694. \uBC94\uC778\uC740 ABL1\uC774\uB77C\uB294
+    \uB2E8\uBC31\uC9C8\uC758 315\uBC88 \uC790\uB9AC\uC5D0 \uC0C8\uB85C \uC0DD\uAE34
+    \uBCC0\uD654 \u2014 \uBB38\uC9C0\uAE30\uAC00 \uBC14\uB00C\uC5B4\uC11C \uC608\uC804
+    \uC57D\uC774 \uB354 \uC774\uC0C1 \uC548 \uB4E3\uB294\uB300\uC694. \uC2E0\uC785
+    \uC5F0\uAD6C\uC6D0\uC778 \uB2F9\uC2E0\uC774 \uC774\uBC88\uC5D4 \uADF8 \uBB38\uC9C0\uAE30\uB97C
+    \uD53C\uD574\uAC00\uB294 \uC0C8\uB85C\uC6B4 \uC5F4\uC1E0\uB97C \uCC3E\uC544 \uC8FC\uC138\uC694!"
   difficulty: 4
   accent: {r: 0.78, g: 0.4, b: 0.95, a: 1}
   structureStreamingPath: structures/P00519.json
   mutationResidueIds: 3b010000
-  targetPocketLabel: "문지기가 바뀐 ATP 결합 포켓 (Gatekeeper T315I)"
+  targetPocketLabel: "\uBB38\uC9C0\uAE30\uAC00 \uBC14\uB010 ATP \uACB0\uD569 \uD3EC\uCF13
+    (Gatekeeper T315I)"
   stages:
   - stage: 0
-    title: "1화 · 첫 번째 승리"
-    objective: "예전에 이 사건을 해결했던 방법과, 표적이 된 ABL1 단백질의 315번 자리를 되짚어보자."
+    title: "1\uD654 \xB7 \uCCAB \uBC88\uC9F8 \uC2B9\uB9AC"
+    objective: "\uC608\uC804\uC5D0 \uC774 \uC0AC\uAC74\uC744 \uD574\uACB0\uD588\uB358
+      \uBC29\uBC95\uACFC, \uD45C\uC801\uC774 \uB41C ABL1 \uB2E8\uBC31\uC9C8\uC758
+      315\uBC88 \uC790\uB9AC\uB97C \uB418\uC9DA\uC5B4\uBCF4\uC790."
     assistantLines:
-    - "다시 만나서 반가워! 이번엔 예전에 우리가 해결했던 사건이 돌아왔어."
-    - "만성골수성백혈병이라는 병은 BCR-ABL이라는 융합 단백질이 계속 '자라라!' 신호를 보내서 생겨.
-      그때 Imatinib이라는 열쇠로 이 신호를 멈췄었지."
-    - "그 열쇠는 ABL1 단백질의 315번 자리 근처, ATP가 들어가는 좁은 문 앞에서 딱 맞물렸었어."
+    - "\uB2E4\uC2DC \uB9CC\uB098\uC11C \uBC18\uAC00\uC6CC! \uC774\uBC88\uC5D4 \uC608\uC804\uC5D0
+      \uC6B0\uB9AC\uAC00 \uD574\uACB0\uD588\uB358 \uC0AC\uAC74\uC774 \uB3CC\uC544\uC654\uC5B4."
+    - "\uB9CC\uC131\uACE8\uC218\uC131\uBC31\uD608\uBCD1\uC774\uB77C\uB294 \uBCD1\uC740
+      BCR-ABL\uC774\uB77C\uB294 \uC735\uD569 \uB2E8\uBC31\uC9C8\uC774 \uACC4\uC18D
+      '\uC790\uB77C\uB77C!' \uC2E0\uD638\uB97C \uBCF4\uB0B4\uC11C \uC0DD\uACA8. \uADF8\uB54C
+      Imatinib\uC774\uB77C\uB294 \uC5F4\uC1E0\uB85C \uC774 \uC2E0\uD638\uB97C \uBA48\uCDC4\uC5C8\uC9C0."
+    - "\uADF8 \uC5F4\uC1E0\uB294 ABL1 \uB2E8\uBC31\uC9C8\uC758 315\uBC88 \uC790\uB9AC
+      \uADFC\uCC98, ATP\uAC00 \uB4E4\uC5B4\uAC00\uB294 \uC881\uC740 \uBB38 \uC55E\uC5D0\uC11C
+      \uB531 \uB9DE\uBB3C\uB838\uC5C8\uC5B4."
     hints:
-    - "315번 자리를 기억해둬. 이번 사건의 진짜 무대야."
-    llmContext: "BCR-ABL은 정상 ABL1 유전자가 BCR 유전자와 융합되며 항상 켜진 상태로 고정된
-      키나아제다. Imatinib 같은 ATP 경쟁적 억제제는 ATP가 들어가는 자리(포켓)를 막아 신호를
-      끈다. 이 포켓 입구에는 '문지기(gatekeeper)'라 부르는 아미노산이 있는데, 정상일 때는
-      Thr(트레오닌)315번이다."
+    - "315\uBC88 \uC790\uB9AC\uB97C \uAE30\uC5B5\uD574\uB46C. \uC774\uBC88 \uC0AC\uAC74\uC758
+      \uC9C4\uC9DC \uBB34\uB300\uC57C."
+    llmContext: "BCR-ABL\uC740 \uC815\uC0C1 ABL1 \uC720\uC804\uC790\uAC00 BCR \uC720\uC804\uC790\uC640
+      \uC735\uD569\uB418\uBA70 \uD56D\uC0C1 \uCF1C\uC9C4 \uC0C1\uD0DC\uB85C \uACE0\uC815\uB41C
+      \uD0A4\uB098\uC544\uC81C\uB2E4. Imatinib \uAC19\uC740 ATP \uACBD\uC7C1\uC801
+      \uC5B5\uC81C\uC81C\uB294 ATP\uAC00 \uB4E4\uC5B4\uAC00\uB294 \uC790\uB9AC(\uD3EC\uCF13)\uB97C
+      \uB9C9\uC544 \uC2E0\uD638\uB97C \uB048\uB2E4. \uC774 \uD3EC\uCF13 \uC785\uAD6C\uC5D0\uB294
+      '\uBB38\uC9C0\uAE30(gatekeeper)'\uB77C \uBD80\uB974\uB294 \uC544\uBBF8\uB178\uC0B0\uC774
+      \uC788\uB294\uB370, \uC815\uC0C1\uC77C \uB54C\uB294 Thr(\uD2B8\uB808\uC624\uB2CC)315\uBC88\uC774\uB2E4."
   - stage: 1
-    title: "2화 · 18개월 후, 돌아온 신호"
-    objective: "커진 315번 자리 곁사슬을 찾아, 무엇이 달라졌는지 확인해보자."
+    title: "2\uD654 \xB7 18\uAC1C\uC6D4 \uD6C4, \uB3CC\uC544\uC628 \uC2E0\uD638"
+    objective: "\uCEE4\uC9C4 315\uBC88 \uC790\uB9AC \uACC1\uC0AC\uC2AC\uC744 \uCC3E\uC544,
+      \uBB34\uC5C7\uC774 \uB2EC\uB77C\uC84C\uB294\uC9C0 \uD655\uC778\uD574\uBCF4\uC790."
     assistantLines:
-    - "⏳ 18개월 후... 화면이 잠깐 어두워졌다가, 다시 같은 자리를 비춰줄게."
-    - "315번 자리를 다시 봐봐. 작았던 Thr(트레오닌)가 훨씬 커다란 Ile(아이소류신)로 바뀌었어."
-    - "저 빨갛게 빛나는 곳이 바로 그 자리야. 곁사슬이 커지면서 예전 열쇠가 들어가던 틈을 막아버렸어."
+    - "\u23F3 18\uAC1C\uC6D4 \uD6C4... \uD654\uBA74\uC774 \uC7A0\uAE50 \uC5B4\uB450\uC6CC\uC84C\uB2E4\uAC00,
+      \uB2E4\uC2DC \uAC19\uC740 \uC790\uB9AC\uB97C \uBE44\uCDB0\uC904\uAC8C."
+    - "315\uBC88 \uC790\uB9AC\uB97C \uB2E4\uC2DC \uBD10\uBD10. \uC791\uC558\uB358
+      Thr(\uD2B8\uB808\uC624\uB2CC)\uAC00 \uD6E8\uC52C \uCEE4\uB2E4\uB780 Ile(\uC544\uC774\uC18C\uB958\uC2E0)\uB85C
+      \uBC14\uB00C\uC5C8\uC5B4."
+    - "\uC800 \uBE68\uAC1B\uAC8C \uBE5B\uB098\uB294 \uACF3\uC774 \uBC14\uB85C \uADF8
+      \uC790\uB9AC\uC57C. \uACC1\uC0AC\uC2AC\uC774 \uCEE4\uC9C0\uBA74\uC11C \uC608\uC804
+      \uC5F4\uC1E0\uAC00 \uB4E4\uC5B4\uAC00\uB358 \uD2C8\uC744 \uB9C9\uC544\uBC84\uB838\uC5B4."
     hints:
-    - "315번 자리를 클릭해봐. 빨갛게 반짝이며 커진 게 보일 거야."
-    llmContext: "T315I는 ABL1의 문지기 잔기 Thr315이 Ile(아이소류신)로 바뀌는 돌연변이다.
-      아이소류신은 곁사슬이 더 크고 소수성이라, 기존 ATP 경쟁 억제제(예: Imatinib)가 자리
-      잡던 공간을 물리적으로 막아버린다(steric hindrance). 이 때문에 한 번 들었던 약이 더
-      이상 듣지 않게 된다 — 이것이 임상에서 가장 흔한 내성 메커니즘 중 하나다."
+    - "315\uBC88 \uC790\uB9AC\uB97C \uD074\uB9AD\uD574\uBD10. \uBE68\uAC1B\uAC8C
+      \uBC18\uC9DD\uC774\uBA70 \uCEE4\uC9C4 \uAC8C \uBCF4\uC77C \uAC70\uC57C."
+    llmContext: "T315I\uB294 ABL1\uC758 \uBB38\uC9C0\uAE30 \uC794\uAE30 Thr315\uC774
+      Ile(\uC544\uC774\uC18C\uB958\uC2E0)\uB85C \uBC14\uB00C\uB294 \uB3CC\uC5F0\uBCC0\uC774\uB2E4.
+      \uC544\uC774\uC18C\uB958\uC2E0\uC740 \uACC1\uC0AC\uC2AC\uC774 \uB354 \uD06C\uACE0
+      \uC18C\uC218\uC131\uC774\uB77C, \uAE30\uC874 ATP \uACBD\uC7C1 \uC5B5\uC81C\uC81C(\uC608:
+      Imatinib)\uAC00 \uC790\uB9AC \uC7A1\uB358 \uACF5\uAC04\uC744 \uBB3C\uB9AC\uC801\uC73C\uB85C
+      \uB9C9\uC544\uBC84\uB9B0\uB2E4(steric hindrance). \uC774 \uB54C\uBB38\uC5D0
+      \uD55C \uBC88 \uB4E4\uC5C8\uB358 \uC57D\uC774 \uB354 \uC774\uC0C1 \uB4E3\uC9C0
+      \uC54A\uAC8C \uB41C\uB2E4 \u2014 \uC774\uAC83\uC774 \uC784\uC0C1\uC5D0\uC11C
+      \uAC00\uC7A5 \uD754\uD55C \uB0B4\uC131 \uBA54\uCEE4\uB2C8\uC998 \uC911 \uD558\uB098\uB2E4."
   - stage: 2
-    title: "3화 · 문지기가 된 아미노산"
-    objective: "커진 문지기를 피해서 접근해야 하는 ATP 포켓의 새로운 모양을 살펴보자."
+    title: "3\uD654 \xB7 \uBB38\uC9C0\uAE30\uAC00 \uB41C \uC544\uBBF8\uB178\uC0B0"
+    objective: "\uCEE4\uC9C4 \uBB38\uC9C0\uAE30\uB97C \uD53C\uD574\uC11C \uC811\uADFC\uD574\uC57C
+      \uD558\uB294 ATP \uD3EC\uCF13\uC758 \uC0C8\uB85C\uC6B4 \uBAA8\uC591\uC744 \uC0B4\uD3B4\uBCF4\uC790."
     assistantLines:
-    - "이 포켓은 예전과 똑같은 자리이지만, 315번 문지기 때문에 입구 모양이 완전히 달라졌어."
-    - "이제 필요한 건 이 문지기를 정면으로 밀어붙이는 열쇠가 아니라, 살짝 돌아가는 열쇠야."
+    - "\uC774 \uD3EC\uCF13\uC740 \uC608\uC804\uACFC \uB611\uAC19\uC740 \uC790\uB9AC\uC774\uC9C0\uB9CC,
+      315\uBC88 \uBB38\uC9C0\uAE30 \uB54C\uBB38\uC5D0 \uC785\uAD6C \uBAA8\uC591\uC774
+      \uC644\uC804\uD788 \uB2EC\uB77C\uC84C\uC5B4."
+    - "\uC774\uC81C \uD544\uC694\uD55C \uAC74 \uC774 \uBB38\uC9C0\uAE30\uB97C \uC815\uBA74\uC73C\uB85C
+      \uBC00\uC5B4\uBD99\uC774\uB294 \uC5F4\uC1E0\uAC00 \uC544\uB2C8\uB77C, \uC0B4\uC9DD
+      \uB3CC\uC544\uAC00\uB294 \uC5F4\uC1E0\uC57C."
     hints:
-    - "포켓 안쪽 다른 잔기들(248, 271, 317, 318번 등)은 그대로야 — 오직 315번만 달라졌어."
-    llmContext: "ATP 포켓의 나머지 결합 잔기(hinge, DFG motif 등)는 그대로 유지되므로, 새로운
-      억제제는 이 잔기들과의 상호작용은 지키면서 315번 근처만 피해가도록 설계돼야 한다.
-      이것이 Ponatinib 같은 3세대 억제제가 채택한 전략이다."
+    - "\uD3EC\uCF13 \uC548\uCABD \uB2E4\uB978 \uC794\uAE30\uB4E4(248, 271, 317, 318\uBC88
+      \uB4F1)\uC740 \uADF8\uB300\uB85C\uC57C \u2014 \uC624\uC9C1 315\uBC88\uB9CC
+      \uB2EC\uB77C\uC84C\uC5B4."
+    llmContext: "ATP \uD3EC\uCF13\uC758 \uB098\uBA38\uC9C0 \uACB0\uD569 \uC794\uAE30(hinge,
+      DFG motif \uB4F1)\uB294 \uADF8\uB300\uB85C \uC720\uC9C0\uB418\uBBC0\uB85C,
+      \uC0C8\uB85C\uC6B4 \uC5B5\uC81C\uC81C\uB294 \uC774 \uC794\uAE30\uB4E4\uACFC\uC758
+      \uC0C1\uD638\uC791\uC6A9\uC740 \uC9C0\uD0A4\uBA74\uC11C 315\uBC88 \uADFC\uCC98\uB9CC
+      \uD53C\uD574\uAC00\uB3C4\uB85D \uC124\uACC4\uB3FC\uC57C \uD55C\uB2E4. \uC774\uAC83\uC774
+      Ponatinib \uAC19\uC740 3\uC138\uB300 \uC5B5\uC81C\uC81C\uAC00 \uCC44\uD0DD\uD55C
+      \uC804\uB7B5\uC774\uB2E4."
   - stage: 3
-    title: "4화 · 다섯 개의 열쇠"
-    objective: "후보물질 5종 중, 커진 문지기를 피해 포켓에 안착하는 진짜 열쇠를 찾아보자."
+    title: "4\uD654 \xB7 \uB2E4\uC12F \uAC1C\uC758 \uC5F4\uC1E0"
+    objective: "\uD6C4\uBCF4\uBB3C\uC9C8 5\uC885 \uC911, \uCEE4\uC9C4 \uBB38\uC9C0\uAE30\uB97C
+      \uD53C\uD574 \uD3EC\uCF13\uC5D0 \uC548\uCC29\uD558\uB294 \uC9C4\uC9DC \uC5F4\uC1E0\uB97C
+      \uCC3E\uC544\uBCF4\uC790."
     assistantLines:
-    - "후보물질을 다섯 개 준비했어. Imatinib, Nilotinib, Dasatinib은 전에도 쓰였던 익숙한
-      열쇠들이고, 나머지 둘은 이번 사건을 위해 새로 나온 후보야."
-    - "하나씩 포켓에 가져다 대 보자. 커진 315번 자리를 피해가는 모양인지 잘 살펴봐."
+    - "\uD6C4\uBCF4\uBB3C\uC9C8\uC744 \uB2E4\uC12F \uAC1C \uC900\uBE44\uD588\uC5B4.
+      Imatinib, Nilotinib, Dasatinib\uC740 \uC804\uC5D0\uB3C4 \uC4F0\uC600\uB358
+      \uC775\uC219\uD55C \uC5F4\uC1E0\uB4E4\uC774\uACE0, \uB098\uBA38\uC9C0 \uB458\uC740
+      \uC774\uBC88 \uC0AC\uAC74\uC744 \uC704\uD574 \uC0C8\uB85C \uB098\uC628 \uD6C4\uBCF4\uC57C."
+    - "\uD558\uB098\uC529 \uD3EC\uCF13\uC5D0 \uAC00\uC838\uB2E4 \uB300 \uBCF4\uC790.
+      \uCEE4\uC9C4 315\uBC88 \uC790\uB9AC\uB97C \uD53C\uD574\uAC00\uB294 \uBAA8\uC591\uC778\uC9C0
+      \uC798 \uC0B4\uD3B4\uBD10."
     hints:
-    - "결합력(친화도) 숫자가 마이너스로 클수록 더 세게 붙는다는 뜻이야."
-    - "곧게 뻗은 좁은 연결고리를 가진 열쇠가 좁아진 틈을 통과하기 유리해."
-    llmContext: "Imatinib-like/Nilotinib-like는 T315I 부근에서 steric clash로 막히고,
-      Dasatinib-like는 다른 결합 모드를 쓰지만 여전히 안정적으로 고정되지 못한다.
-      Ponatinib-like만이 직선형 ethynyl(삼중결합) 링커로 Ile315의 커진 곁사슬을 비켜가며
-      포켓 깊숙이 도킹한다."
+    - "\uACB0\uD569\uB825(\uCE5C\uD654\uB3C4) \uC22B\uC790\uAC00 \uB9C8\uC774\uB108\uC2A4\uB85C
+      \uD074\uC218\uB85D \uB354 \uC138\uAC8C \uBD99\uB294\uB2E4\uB294 \uB73B\uC774\uC57C."
+    - "\uACE7\uAC8C \uBED7\uC740 \uC881\uC740 \uC5F0\uACB0\uACE0\uB9AC\uB97C \uAC00\uC9C4
+      \uC5F4\uC1E0\uAC00 \uC881\uC544\uC9C4 \uD2C8\uC744 \uD1B5\uACFC\uD558\uAE30
+      \uC720\uB9AC\uD574."
+    llmContext: "Imatinib-like/Nilotinib-like\uB294 T315I \uBD80\uADFC\uC5D0\uC11C
+      steric clash\uB85C \uB9C9\uD788\uACE0, Dasatinib-like\uB294 \uB2E4\uB978 \uACB0\uD569
+      \uBAA8\uB4DC\uB97C \uC4F0\uC9C0\uB9CC \uC5EC\uC804\uD788 \uC548\uC815\uC801\uC73C\uB85C
+      \uACE0\uC815\uB418\uC9C0 \uBABB\uD55C\uB2E4. Ponatinib-like\uB9CC\uC774 \uC9C1\uC120\uD615
+      ethynyl(\uC0BC\uC911\uACB0\uD569) \uB9C1\uCEE4\uB85C Ile315\uC758 \uCEE4\uC9C4
+      \uACC1\uC0AC\uC2AC\uC744 \uBE44\uCF1C\uAC00\uBA70 \uD3EC\uCF13 \uAE4A\uC219\uC774
+      \uB3C4\uD0B9\uD55C\uB2E4."
   - stage: 4
-    title: "5화 · 구조가 만든 승리"
-    objective: "실패한 시도들과 성공한 결합을 비교하고, 이번 사건에서 배운 교훈을 정리하자."
+    title: "5\uD654 \xB7 \uAD6C\uC870\uAC00 \uB9CC\uB4E0 \uC2B9\uB9AC"
+    objective: "\uC2E4\uD328\uD55C \uC2DC\uB3C4\uB4E4\uACFC \uC131\uACF5\uD55C \uACB0\uD569\uC744
+      \uBE44\uAD50\uD558\uACE0, \uC774\uBC88 \uC0AC\uAC74\uC5D0\uC11C \uBC30\uC6B4
+      \uAD50\uD6C8\uC744 \uC815\uB9AC\uD558\uC790."
     assistantLines:
-    - "돌아보면 Imatinib, Nilotinib, Dasatinib 모두 315번 자리에서 막혔었지."
-    - "하지만 Ponatinib은 곧게 뻗은 연결고리 하나로 그 벽을 피해갔어. 키나아제 활동이 완전히
-      멈췄어!"
-    - "약물의 아주 작은 구조적 변화가 내성을 이겨내느냐 마느냐를 가르는 거야. (A small
-      structural change in a drug can determine whether resistance is overcome.)"
+    - "\uB3CC\uC544\uBCF4\uBA74 Imatinib, Nilotinib, Dasatinib \uBAA8\uB450 315\uBC88
+      \uC790\uB9AC\uC5D0\uC11C \uB9C9\uD614\uC5C8\uC9C0."
+    - "\uD558\uC9C0\uB9CC Ponatinib\uC740 \uACE7\uAC8C \uBED7\uC740 \uC5F0\uACB0\uACE0\uB9AC
+      \uD558\uB098\uB85C \uADF8 \uBCBD\uC744 \uD53C\uD574\uAC14\uC5B4. \uD0A4\uB098\uC544\uC81C
+      \uD65C\uB3D9\uC774 \uC644\uC804\uD788 \uBA48\uCDC4\uC5B4!"
+    - "\uC57D\uBB3C\uC758 \uC544\uC8FC \uC791\uC740 \uAD6C\uC870\uC801 \uBCC0\uD654\uAC00
+      \uB0B4\uC131\uC744 \uC774\uACA8\uB0B4\uB290\uB0D0 \uB9C8\uB290\uB0D0\uB97C
+      \uAC00\uB974\uB294 \uAC70\uC57C. (A small structural change in a drug can determine
+      whether resistance is overcome.)"
     hints:
-    - "궁금하면 물어봐 — Asciminib이라는 약은 아예 다른 자리(미리스토일 포켓)를 노려서 이
-      문지기를 신경 쓸 필요가 없어."
-    llmContext: "이 퀘스트의 핵심 교훈은 '작은 구조 변화가 내성 극복을 가른다'는 것이다.
-      Ponatinib은 ethynyl linker로 gatekeeper 우회에 성공한 대표 사례다. 보너스로, Asciminib은
-      ATP 포켓이 아닌 myristoyl 부위에 결합하는 알로스테릭 억제제로, T315I의 영향을 아예
-      받지 않는 또 다른 전략을 보여준다(STAMP 억제제)."
+    - "\uAD81\uAE08\uD558\uBA74 \uBB3C\uC5B4\uBD10 \u2014 Asciminib\uC774\uB77C\uB294
+      \uC57D\uC740 \uC544\uC608 \uB2E4\uB978 \uC790\uB9AC(\uBBF8\uB9AC\uC2A4\uD1A0\uC77C
+      \uD3EC\uCF13)\uB97C \uB178\uB824\uC11C \uC774 \uBB38\uC9C0\uAE30\uB97C \uC2E0\uACBD
+      \uC4F8 \uD544\uC694\uAC00 \uC5C6\uC5B4."
+    llmContext: "\uC774 \uD018\uC2A4\uD2B8\uC758 \uD575\uC2EC \uAD50\uD6C8\uC740
+      '\uC791\uC740 \uAD6C\uC870 \uBCC0\uD654\uAC00 \uB0B4\uC131 \uADF9\uBCF5\uC744
+      \uAC00\uB978\uB2E4'\uB294 \uAC83\uC774\uB2E4. Ponatinib\uC740 ethynyl linker\uB85C
+      gatekeeper \uC6B0\uD68C\uC5D0 \uC131\uACF5\uD55C \uB300\uD45C \uC0AC\uB840\uB2E4.
+      \uBCF4\uB108\uC2A4\uB85C, Asciminib\uC740 ATP \uD3EC\uCF13\uC774 \uC544\uB2CC
+      myristoyl \uBD80\uC704\uC5D0 \uACB0\uD569\uD558\uB294 \uC54C\uB85C\uC2A4\uD14C\uB9AD
+      \uC5B5\uC81C\uC81C\uB85C, T315I\uC758 \uC601\uD5A5\uC744 \uC544\uC608 \uBC1B\uC9C0
+      \uC54A\uB294 \uB610 \uB2E4\uB978 \uC804\uB7B5\uC744 \uBCF4\uC5EC\uC900\uB2E4(STAMP
+      \uC5B5\uC81C\uC81C)."
   candidates:
   - displayName: Imatinib-like
-    subtitle: "1세대 ATP 경쟁 저해제"
-    features: "Thr315 인식과 ATP pocket의 기존 형상에 의존하는 1세대 저해제"
+    subtitle: "1\uC138\uB300 ATP \uACBD\uC7C1 \uC800\uD574\uC81C"
+    features: "Thr315 \uC778\uC2DD\uACFC ATP pocket\uC758 \uAE30\uC874 \uD615\uC0C1\uC5D0
+      \uC758\uC874\uD558\uB294 1\uC138\uB300 \uC800\uD574\uC81C"
     isCorrect: 0
     affinityKcalPerMol: 2.4
-    resultMessage: "T315I 자리에서 막혔어요! 커진 Ile315 곁사슬이 기존 결합 자리를 가로막고
-      있어요. 예전 상호작용은 끊어지고 튕겨 나왔어요."
+    resultMessage: "T315I \uC790\uB9AC\uC5D0\uC11C \uB9C9\uD614\uC5B4\uC694! \uCEE4\uC9C4
+      Ile315 \uACC1\uC0AC\uC2AC\uC774 \uAE30\uC874 \uACB0\uD569 \uC790\uB9AC\uB97C
+      \uAC00\uB85C\uB9C9\uACE0 \uC788\uC5B4\uC694. \uC608\uC804 \uC0C1\uD638\uC791\uC6A9\uC740
+      \uB04A\uC5B4\uC9C0\uACE0 \uD295\uACA8 \uB098\uC654\uC5B4\uC694."
   - displayName: Nilotinib-like
-    subtitle: "2세대 고친화도 저해제"
-    features: "Imatinib보다 결합력을 높였지만 T315I엔 여전히 취약함"
+    subtitle: "2\uC138\uB300 \uACE0\uCE5C\uD654\uB3C4 \uC800\uD574\uC81C"
+    features: "Imatinib\uBCF4\uB2E4 \uACB0\uD569\uB825\uC744 \uB192\uC600\uC9C0\uB9CC
+      T315I\uC5D4 \uC5EC\uC804\uD788 \uCDE8\uC57D\uD568"
     isCorrect: 0
     affinityKcalPerMol: 1.6
-    resultMessage: "포켓 안쪽까지는 들어왔지만, 문지기 자리 바로 옆에서 충돌했어요. 결합력이
-      높아도 이 장벽은 넘지 못하네요."
+    resultMessage: "\uD3EC\uCF13 \uC548\uCABD\uAE4C\uC9C0\uB294 \uB4E4\uC5B4\uC654\uC9C0\uB9CC,
+      \uBB38\uC9C0\uAE30 \uC790\uB9AC \uBC14\uB85C \uC606\uC5D0\uC11C \uCDA9\uB3CC\uD588\uC5B4\uC694.
+      \uACB0\uD569\uB825\uC774 \uB192\uC544\uB3C4 \uC774 \uC7A5\uBCBD\uC740 \uB118\uC9C0
+      \uBABB\uD558\uB124\uC694."
   - displayName: Dasatinib-like
-    subtitle: "2세대 이중결합모드 저해제"
-    features: "다른 결합 모드를 쓰지만 T315I에는 충분한 활성을 보이지 못함"
+    subtitle: "2\uC138\uB300 \uC774\uC911\uACB0\uD569\uBAA8\uB4DC \uC800\uD574\uC81C"
+    features: "\uB2E4\uB978 \uACB0\uD569 \uBAA8\uB4DC\uB97C \uC4F0\uC9C0\uB9CC T315I\uC5D0\uB294
+      \uCDA9\uBD84\uD55C \uD65C\uC131\uC744 \uBCF4\uC774\uC9C0 \uBABB\uD568"
     isCorrect: 0
     affinityKcalPerMol: 0.6
-    resultMessage: "포켓에 들어가긴 했지만 안정적으로 자리 잡지 못하고 다시 튕겨 나왔어요.
-      결합 방식은 달라도 결국 같은 저항 장벽에 막히네요."
+    resultMessage: "\uD3EC\uCF13\uC5D0 \uB4E4\uC5B4\uAC00\uAE34 \uD588\uC9C0\uB9CC
+      \uC548\uC815\uC801\uC73C\uB85C \uC790\uB9AC \uC7A1\uC9C0 \uBABB\uD558\uACE0
+      \uB2E4\uC2DC \uD295\uACA8 \uB098\uC654\uC5B4\uC694. \uACB0\uD569 \uBC29\uC2DD\uC740
+      \uB2EC\uB77C\uB3C4 \uACB0\uAD6D \uAC19\uC740 \uC800\uD56D \uC7A5\uBCBD\uC5D0
+      \uB9C9\uD788\uB124\uC694."
   - displayName: Ponatinib-like
-    subtitle: "직선형 에티닐 링커 저해제"
-    features: "직선형 ethynyl(삼중결합) 링커로 T315I gatekeeper 주변을 회피하도록 설계됨"
+    subtitle: "\uC9C1\uC120\uD615 \uC5D0\uD2F0\uB2D0 \uB9C1\uCEE4 \uC800\uD574\uC81C"
+    features: "\uC9C1\uC120\uD615 ethynyl(\uC0BC\uC911\uACB0\uD569) \uB9C1\uCEE4\uB85C
+      T315I gatekeeper \uC8FC\uBCC0\uC744 \uD68C\uD53C\uD558\uB3C4\uB85D \uC124\uACC4\uB428"
     isCorrect: 1
     affinityKcalPerMol: -9.4
-    resultMessage: "성공! 곧게 뻗은 에티닐 연결고리가 커진 Ile315을 피해 포켓 깊숙이 정확히
-      안착했어요. 키나아제 활동이 멈췄습니다!"
+    resultMessage: "\uC131\uACF5! \uACE7\uAC8C \uBED7\uC740 \uC5D0\uD2F0\uB2D0 \uC5F0\uACB0\uACE0\uB9AC\uAC00
+      \uCEE4\uC9C4 Ile315\uC744 \uD53C\uD574 \uD3EC\uCF13 \uAE4A\uC219\uC774 \uC815\uD655\uD788
+      \uC548\uCC29\uD588\uC5B4\uC694. \uD0A4\uB098\uC544\uC81C \uD65C\uB3D9\uC774
+      \uBA48\uCDC4\uC2B5\uB2C8\uB2E4!"
   - displayName: Asciminib-like
-    subtitle: "미리스토일 부위 결합 (보너스)"
-    features: "ATP pocket을 직접 경쟁하지 않고 myristoyl 부위라는 다른 결합 부위를 이용함"
+    subtitle: "\uBBF8\uB9AC\uC2A4\uD1A0\uC77C \uBD80\uC704 \uACB0\uD569 (\uBCF4\uB108\uC2A4)"
+    features: "ATP pocket\uC744 \uC9C1\uC811 \uACBD\uC7C1\uD558\uC9C0 \uC54A\uACE0
+      myristoyl \uBD80\uC704\uB77C\uB294 \uB2E4\uB978 \uACB0\uD569 \uBD80\uC704\uB97C
+      \uC774\uC6A9\uD568"
     isCorrect: 0
     affinityKcalPerMol: 0
-    resultMessage: "이 화합물은 ATP 포켓과 자리를 다투지 않아요 — 반대쪽 끝의 '미리스토일
-      자리'라는 완전히 다른 곳에 붙는 방식이라, 여기서는 가까이 가자마자 밀려났어요."
+    resultMessage: "\uC774 \uD654\uD569\uBB3C\uC740 ATP \uD3EC\uCF13\uACFC \uC790\uB9AC\uB97C
+      \uB2E4\uD22C\uC9C0 \uC54A\uC544\uC694 \u2014 \uBC18\uB300\uCABD \uB05D\uC758
+      '\uBBF8\uB9AC\uC2A4\uD1A0\uC77C \uC790\uB9AC'\uB77C\uB294 \uC644\uC804\uD788
+      \uB2E4\uB978 \uACF3\uC5D0 \uBD99\uB294 \uBC29\uC2DD\uC774\uB77C, \uC5EC\uAE30\uC11C\uB294
+      \uAC00\uAE4C\uC774 \uAC00\uC790\uB9C8\uC790 \uBC00\uB824\uB0AC\uC5B4\uC694."

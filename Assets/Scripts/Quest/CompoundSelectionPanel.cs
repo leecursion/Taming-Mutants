@@ -81,6 +81,15 @@ public class CompoundSelectionPanel : MonoBehaviour
     [Tooltip("사선 각도 (도). 양수면 패널 정면이 사용자 중앙 시선(단백질) 쪽, 즉 안쪽을 향해 틀어진다")]
     public float diagonalYaw = 25f;
 
+    [Header("줌인 오버라이드 (예: 사건 5 열안정성 카메라 클로즈업)")]
+    [Tooltip("켜져 있는 동안은 '구조 옆 사선' 대신 카메라 바로 옆에 크게 고정한다 — 카메라가 구조 " +
+             "전체가 아니라 좁은 부위로 확 당겨지면 구조 기준 배치가 의미가 없어지기 때문이다. " +
+             "ThermalStabilityController처럼 클로즈업 연출을 트는 쪽이 SetZoomOverride()로 켜고 끈다. " +
+             "인스펙터 기본값(구조 옆 사선)에는 영향을 주지 않는다.")]
+    public bool zoomOverrideActive;
+    [Tooltip("줌인 오버라이드 중 사용할 크기 배율 (panelScale 대신 사용)")]
+    public float zoomOverridePanelScale = 1.1f;
+
     [Header("표시 레벨 연동")]
     [Tooltip("아미노산(원자) 레벨에서만 패널이 표시됨. 비우면 씬에서 자동 탐색")]
     public StructureLevelController levelController;
@@ -111,6 +120,11 @@ public class CompoundSelectionPanel : MonoBehaviour
     private TextMesh _affinityText;
     private Coroutine _loadRoutine;
     private Vector3 _outerSize;       // 칸 4개가 차지하는 전체 크기 — 배치/라벨 위치 계산에 사용
+
+    // 사건 2(EGFR, structures/P00533.json)를 실측해 고정한 배치 기준값(씬 단위) — 모든 퀘스트가
+    // 구조 크기와 무관하게 이 값을 그대로 쓴다. PlaceNow()의 주석 참고.
+    private const float ReferenceLateralExtent = 2.9637f;
+    private const float ReferenceTopExtent = 2.0004f;
 
     private void Awake()
     {
@@ -177,6 +191,19 @@ public class CompoundSelectionPanel : MonoBehaviour
         PlaceNow();
     }
 
+    // ThermalStabilityController.CameraTransitionRoutine()처럼 레벨 전환 "이후"에도
+    // 카메라가 계속 움직이는 연출이 있으면(p53 변이 자리 클로즈업 등), 레벨 전환 시점에
+    // 한 번만 배치해서는 카메라가 멀어진 뒤 판넬이 화면 밖/구석에 남는다.
+    // AIAssistantFollower와 같은 패턴으로 카메라가 갱신된 뒤(LateUpdate) 매 프레임
+    // 다시 배치해 항상 현재 카메라 기준을 따라가게 한다. PlaceNow()는 원자 경계를
+    // 재측정하지 않고 상수+벡터 연산만 하므로 매 프레임 호출해도 비용이 작다.
+    private void LateUpdate()
+    {
+        if (!autoPlace) return;
+        if (_contentRoot == null || !_contentRoot.gameObject.activeSelf) return;
+        PlaceNow();
+    }
+
     // --- 자동 배치 ---
 
     /// <summary>단백질 원자들의 월드 경계를 측정해 "왼쪽 옆 + 상단 정렬 + 사선"으로 즉시 배치.
@@ -185,9 +212,15 @@ public class CompoundSelectionPanel : MonoBehaviour
     {
         if (targetCamera == null) return;
 
+        if (zoomOverrideActive)
+        {
+            PlaceBesideUser(zoomOverridePanelScale);
+            return;
+        }
+
         if (placeRelativeToCamera)
         {
-            PlaceBesideUser();
+            PlaceBesideUser(panelScale);
             return;
         }
 
@@ -200,29 +233,21 @@ public class CompoundSelectionPanel : MonoBehaviour
         float panelHalfWidth = (_outerSize.x > 0f ? _outerSize.x * 0.5f : boxSize + spacing * 0.5f + outerPadding) * scale;
         float panelHalfHeight = (_outerSize.y > 0f ? _outerSize.y * 0.5f : boxSize + spacing * 0.5f + outerPadding) * scale;
 
-        Vector3 pos;
-        // 활성(현재 보이는) 원자만 측정 — 아미노산 단계의 구간 필터/중앙 정렬과 일치하는 위치에 배치
-        AtomInfo[] atoms = proteinLoader != null ? proteinLoader.GetComponentsInChildren<AtomInfo>(false) : null;
-        if (atoms != null && atoms.Length > 0)
-        {
-            // 단백질 실측 경계: 중심/상단/카메라-가로축 방향 반폭
-            Bounds b = new Bounds(atoms[0].transform.position, Vector3.zero);
-            foreach (var a in atoms) b.Encapsulate(a.transform.position);
-            float lateralExtent = 0f;
-            foreach (var a in atoms)
-                lateralExtent = Mathf.Max(lateralExtent, Mathf.Abs(Vector3.Dot(a.transform.position - b.center, camRight)));
+        Vector3 center;
+        if (proteinLoader != null) center = proteinLoader.transform.position;
+        else if (placementAnchor != null) center = placementAnchor.position;
+        else return; // 배치 기준 없음
 
-            pos = b.center - camRight * (lateralExtent + panelHalfWidth + sideGap);
-            pos.y = b.max.y - panelHalfHeight + topOffset; // 패널 상단 == 구조 상단
-        }
-        else if (placementAnchor != null)
-        {
-            pos = placementAnchor.position - camRight * (panelHalfWidth + sideGap + 0.5f) + Vector3.up * topOffset;
-        }
-        else
-        {
-            return; // 배치 기준 없음
-        }
+        // 단백질 실측 경계 대신, 배치를 확정할 때 기준으로 삼은 사건 2(EGFR, P00533) 구조의
+        // 실측값을 고정해서 쓴다. 퀘스트마다 단백질 크기가 다르면(KRAS/ABL1/CFTR/p53 등) 이 값을
+        // 구조별로 다시 재는 순간 판넬이 퀘스트마다 다른 자리에 놓인다 — "구조 옆 사선"이라는
+        // 배치 규칙 자체는 모든 퀘스트에서 똑같이 보여야 하므로 상수로 고정했다.
+        //
+        // 중심(center)은 여전히 앵커의 실시간 위치를 쓴다 — 아미노산 단계에서 관심 구간만
+        // 화면 중앙에 오도록 StructureLevelController.ApplyAminoAcidCentering이 앵커 자체를
+        // 미리 옮겨두므로, 앵커 위치를 그대로 따르면 구간 정렬도 자동으로 따라온다.
+        Vector3 pos = center - camRight * (ReferenceLateralExtent + panelHalfWidth + sideGap);
+        pos.y = center.y + ReferenceTopExtent - panelHalfHeight + topOffset;
 
         // 카메라→패널 시선 방향을 따라 당기면 화면상 위치는 유지한 채 가깝고 크게 보인다.
         // 상한은 "카메라 앞 0.6m는 남긴다" — 이전의 dist*0.5 상한은 구조가 멀수록 당김을 깎아
@@ -248,7 +273,7 @@ public class CompoundSelectionPanel : MonoBehaviour
     /// 시야 왼쪽 가까이에 사선으로 놓는다. 단백질 크기/거리와 무관하게 항상 손 닿는 거리에 온다.
     /// 비서와 마찬가지로 수평 방향(yaw)만 기준축으로 써서 고개 각도에 흔들리지 않는다.
     /// </summary>
-    private void PlaceBesideUser()
+    private void PlaceBesideUser(float scale)
     {
         Transform cam = targetCamera.transform;
 
@@ -266,13 +291,24 @@ public class CompoundSelectionPanel : MonoBehaviour
         Vector3 pos = cam.position + basis * cameraOffset;
 
         transform.position = pos;
-        transform.localScale = Vector3.one * Mathf.Max(panelScale, 0.01f);
+        transform.localScale = Vector3.one * Mathf.Max(scale, 0.01f);
 
         // 패널이 시선 왼쪽에 있으므로 음(-)의 yaw로 정면을 중앙 시선(안쪽)으로 틀어 사선 배치
         Vector3 away = pos - cam.position;
         away.y = 0f;
         if (away.sqrMagnitude < 1e-6f) away = basis * Vector3.forward;
         transform.rotation = Quaternion.LookRotation(away.normalized) * Quaternion.Euler(0f, -diagonalYaw, 0f);
+    }
+
+    /// <summary>
+    /// ThermalStabilityController처럼 카메라를 구조의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
+    /// 연출 시작/종료에 맞춰 호출한다. true면 "구조 옆 사선" 배치를 잠시 멈추고 카메라 옆에
+    /// 크게 고정하며, false면 원래 배치 규칙으로 되돌린다. LateUpdate가 매 프레임 재배치하므로
+    /// 카메라가 계속 움직이는 클로즈업 도중에도 계속 따라간다.
+    /// </summary>
+    public void SetZoomOverride(bool active)
+    {
+        zoomOverrideActive = active;
     }
 
     // --- 로딩 / 그리드 구성 ---
@@ -358,6 +394,24 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void CreateLabel(Transform parent, string title, string subtitle, Vector3 localPos)
     {
+        // 이름표 전용 배경판. 바닥 글로우(스포트라이트 효과, CompoundSlot.BuildLightPresentation)는
+        // 눕혀진 원반이라 카메라 각도에 따라 글자와 어긋나 보인다 — 텍스트와 같은 방향을
+        // 향하는(같은 부모 회전을 그대로 따르는) 별도 배경판이라야 어느 각도에서도 글자 뒤에
+        // 정확히 붙어 보인다. anchor가 UpperCenter라 텍스트가 localPos에서 아래로 자라므로,
+        // 배경판 중심도 그만큼 아래로 내려서 잡는다.
+        const float backgroundHeight = 0.11f;
+        Vector3 backgroundLocalPos = localPos + new Vector3(0f, -backgroundHeight * 0.5f, 0.015f); // +Z = 텍스트보다 살짝 뒤
+
+        var bgGo = new GameObject("LabelBackground");
+        bgGo.transform.SetParent(parent, false);
+        bgGo.transform.localPosition = backgroundLocalPos;
+
+        var bgRenderer = bgGo.AddComponent<SpriteRenderer>();
+        bgRenderer.sprite = HoloSpriteFactory.Panel();
+        bgRenderer.drawMode = SpriteDrawMode.Sliced;
+        bgRenderer.size = new Vector2(boxSize * 0.92f, backgroundHeight);
+        bgRenderer.color = new Color(0.65f, 0.87f, 1f, 0.55f); // 파스텔 하늘색
+
         var go = new GameObject("Label");
         go.transform.SetParent(parent, false);
         go.transform.localPosition = localPos;
@@ -406,20 +460,32 @@ public class CompoundSelectionPanel : MonoBehaviour
             _affinityText.transform.localPosition = new Vector3(0f, halfH + 0.05f, 0f);
     }
 
-    /// <summary>도킹 결과 메시지 + 친화도 수치를 패널 상단에 표시.</summary>
-    public void ShowResult(CompoundData data, Color color)
+    /// <summary>
+    /// 도킹 결과 메시지 + 친화도 수치를 패널 상단에 표시.
+    /// messageOverride/affinityOverride를 주면 data의 값 대신 그 문구를 그대로 쓴다 —
+    /// 예: 순서 오류(prerequisite 미충족)처럼 화합물 고유의 결과가 아니라 상황에 따라
+    /// 다른 안내가 필요한 경우.
+    /// </summary>
+    public void ShowResult(CompoundData data, Color color, string messageOverride = null, string affinityOverride = null)
     {
         if (_resultText != null)
         {
-            _resultText.text = data.result_message;
+            _resultText.text = messageOverride ?? data.result_message;
             _resultText.color = color;
         }
         if (_affinityText != null)
         {
-            string sign = data.affinity > 0 ? "+" : "";
-            _affinityText.text = data.Outcome == DockingOutcome.StericClash
-                ? "ΔG = 측정 불가 (진입 실패)"
-                : $"ΔG = {sign}{data.affinity:0.0} kcal/mol";
+            if (affinityOverride != null)
+            {
+                _affinityText.text = affinityOverride;
+            }
+            else
+            {
+                string sign = data.affinity > 0 ? "+" : "";
+                _affinityText.text = data.Outcome == DockingOutcome.StericClash
+                    ? "ΔG = 측정 불가 (진입 실패)"
+                    : $"ΔG = {sign}{data.affinity:0.0} kcal/mol";
+            }
             _affinityText.color = color;
         }
     }

@@ -46,10 +46,20 @@ public class QuestSelectionBoard : MonoBehaviour
 
     [Header("페이지네이션")]
     [Tooltip("한 페이지에 보여줄 카드 수. 퀘스트가 계속 늘어나면 카드가 화면 비율에 맞춰 " +
-             "한없이 작아지므로(fitToViewport), 이 수를 넘으면 '다음' 버튼으로 페이지를 나눈다.")]
-    public int cardsPerPage = 3;
+             "한없이 작아지므로(fitToViewport), 이 수를 넘으면 '다음' 버튼으로 페이지를 나눈다. " +
+             "MaxCardsPerPage(2)로 상한이 고정되어 있어 여기 값을 더 키워도 한 페이지엔 2장까지만 나온다.")]
+    public int cardsPerPage = 2;
     [Tooltip("페이지 이동 버튼/표시줄 높이 (캔버스 단위)")]
     public float pagerHeight = 64f;
+
+    /// <summary>
+    /// 한 페이지에 보일 카드 수의 절대 상한. Inspector 값이나 예전 씬에 저장된 값이 무엇이든
+    /// (예: 이 필드가 생기기 전에 저장된 씬은 역직렬화 시 코드 기본값을 쓰지만, 혹시 다른 경로로
+    /// 더 큰 값이 들어와도) 한 화면에 2장까지만 보이도록 여기서 한 번 더 강제한다.
+    /// </summary>
+    private const int MaxCardsPerPage = 2;
+
+    private int EffectiveCardsPerPage => Mathf.Clamp(cardsPerPage, 1, MaxCardsPerPage);
 
     [Header("선명도")]
     [Tooltip("화면 픽셀 1개를 몇 배로 구울지")]
@@ -77,6 +87,10 @@ public class QuestSelectionBoard : MonoBehaviour
     private RectTransform _content;
     private RectTransform _cardsContainer;
     private readonly List<CanvasGroup> _cardGroups = new List<CanvasGroup>();
+    // 카드별 페이드인은 각자 독립된 코루틴이라 _revealRoutine 하나만으로는 멈출 수 없다.
+    // 여기 추적해뒀다가 카드를 다시 짓거나(RebuildCardsForCurrentPage) 보드를 닫을 때(Hide) 같이 멈춘다 —
+    // 안 그러면 이미 Destroy된 카드의 CanvasGroup에 다음 프레임에서 접근해 MissingReferenceException이 난다.
+    private readonly List<Coroutine> _cardFadeRoutines = new List<Coroutine>();
     private Coroutine _revealRoutine;
     private Coroutine _pageRevealRoutine;
     private Camera _camera;
@@ -90,7 +104,7 @@ public class QuestSelectionBoard : MonoBehaviour
 
     private int PageCount => catalog == null || catalog.Count == 0
         ? 1
-        : Mathf.CeilToInt(catalog.Count / (float)Mathf.Max(cardsPerPage, 1));
+        : Mathf.CeilToInt(catalog.Count / (float)EffectiveCardsPerPage);
 
     private void Awake()
     {
@@ -260,7 +274,17 @@ public class QuestSelectionBoard : MonoBehaviour
         }
 
         if (_revealRoutine != null) StopCoroutine(_revealRoutine);
+        StopCardFadeRoutines();
         _revealRoutine = StartCoroutine(FadeOutRoutine());
+    }
+
+    /// <summary>카드별 페이드인 코루틴을 전부 멈추고 목록을 비운다.
+    /// 카드를 다시 짓기 직전(RebuildCardsForCurrentPage)과 보드를 닫을 때(Hide) 호출한다.</summary>
+    private void StopCardFadeRoutines()
+    {
+        foreach (Coroutine routine in _cardFadeRoutines)
+            if (routine != null) StopCoroutine(routine);
+        _cardFadeRoutines.Clear();
     }
 
     private void SetVisibleImmediate(bool visible)
@@ -283,7 +307,7 @@ public class QuestSelectionBoard : MonoBehaviour
 
         foreach (CanvasGroup card in _cardGroups)
         {
-            StartCoroutine(FadeGroup(card, 1f));
+            _cardFadeRoutines.Add(StartCoroutine(FadeGroup(card, 1f)));
             if (cardStagger > 0f) yield return new WaitForSeconds(cardStagger);
         }
 
@@ -430,6 +454,10 @@ public class QuestSelectionBoard : MonoBehaviour
     /// </summary>
     private void RebuildCardsForCurrentPage()
     {
+        // 카드를 지우기 전에 아직 안 끝난 카드별 페이드 코루틴부터 멈춘다 — 안 그러면
+        // 다음 프레임에 그 코루틴이 방금 Destroy한 CanvasGroup에 접근해 예외가 난다.
+        StopCardFadeRoutines();
+
         // 비활성화까지 먼저 해둬야 한다 — Destroy는 이번 프레임 끝까지 계층에 남아 있어서,
         // 곧바로 이어지는 레이아웃 재계산(ForceRebuildLayoutImmediate)이 지워질 카드까지
         // 포함해 잘못된 높이를 잡거나, 잠깐이나마 클릭을 받는 유령 카드가 생길 수 있다.
@@ -447,7 +475,7 @@ public class QuestSelectionBoard : MonoBehaviour
         }
         else
         {
-            int perPage = Mathf.Max(cardsPerPage, 1);
+            int perPage = EffectiveCardsPerPage;
             int start = _currentPage * perPage;
             int end = Mathf.Min(start + perPage, catalog.Count);
 
@@ -481,7 +509,7 @@ public class QuestSelectionBoard : MonoBehaviour
 
         foreach (CanvasGroup card in _cardGroups)
         {
-            StartCoroutine(FadeGroup(card, 1f));
+            _cardFadeRoutines.Add(StartCoroutine(FadeGroup(card, 1f)));
             if (cardStagger > 0f) yield return new WaitForSeconds(cardStagger);
         }
 

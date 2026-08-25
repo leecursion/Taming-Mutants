@@ -27,6 +27,11 @@ public class DockingQuestController : MonoBehaviour
     public QuestManagerSpatialUI questUI;
     [Tooltip("공유결합 연출용 실린더 프리팹 (비우면 ProteinLoader.bondPrefab 재사용)")]
     public GameObject covalentBondPrefab;
+    [Tooltip("p53 Y220C 열안정성 퀘스트에서만 쓰인다. 있으면 정답(안정화제) 도킹 성공 시 " +
+             "wobble을 가라앉히고, 부분 정답/오답 결과에 맞는 HUD 지표를 갱신한다. 비우면 무시된다.")]
+    public ThermalStabilityController thermal;
+    [Tooltip("위와 같은 조건 — 결과별 p53 총량/DNA 결합능/독성 경고 HUD를 갱신한다.")]
+    public ThermalStabilityHUD hud;
 
     [Header("타깃 부위 (res_id는 로드된 구조 JSON 기준 — QuestCatalog 사용 시 퀘스트 JSON이 덮어씀)")]
     [Tooltip("공유결합 대상 잔기 — KRAS G12C의 Cys12")]
@@ -53,6 +58,9 @@ public class DockingQuestController : MonoBehaviour
 
     private readonly List<AtomInfo> _pocketAtoms = new List<AtomInfo>();
     private readonly List<GameObject> _questSpawned = new List<GameObject>(); // 락인된 클론·공유결합 등 퀘스트 산출물
+    // 여러 화합물이 순서대로 필요한 퀘스트(예: CFTR corrector -> potentiator)에서
+    // "이미 Success한 화합물 id"를 기억해, 아직 순서가 안 된 화합물의 requires_prior_success_id를 검사한다.
+    private readonly HashSet<string> _succeededCompoundIds = new HashSet<string>();
     private AtomInfo _targetSulfur;   // Cys12의 SG (없으면 해당 잔기 CA로 폴백)
     private bool _indexed;
     private bool _questCompleted;
@@ -79,6 +87,10 @@ public class DockingQuestController : MonoBehaviour
 
         _questCompleted = false;
         _indexed = false;
+        _succeededCompoundIds.Clear();
+
+        if (thermal != null) thermal.SetStabilized(false);
+        if (hud != null) { hud.SetDnaBindingCompetent(false); hud.HideWarning(); hud.SetP53Quantity(0f); }
     }
 
     private void Awake()
@@ -91,6 +103,9 @@ public class DockingQuestController : MonoBehaviour
             selectionPanel = FindFirstObjectByType<CompoundSelectionPanel>(FindObjectsInactive.Include);
         if (levelController == null && proteinLoader != null)
             levelController = proteinLoader.GetComponent<StructureLevelController>();
+        // 열안정성 퀘스트가 아닌 씬에는 이 둘이 아예 없을 수 있다 — 못 찾아도 조용히 null로 둔다.
+        if (thermal == null) thermal = FindFirstObjectByType<ThermalStabilityController>(FindObjectsInactive.Include);
+        if (hud == null) hud = FindFirstObjectByType<ThermalStabilityHUD>(FindObjectsInactive.Include);
     }
 
     private void OnEnable()
@@ -185,6 +200,7 @@ public class DockingQuestController : MonoBehaviour
 
         selectionPanel.Interactable = false;
         selectionPanel.ClearResult();
+        if (hud != null) hud.HideWarning(); // 새 시도마다 이전 경고 배너를 지운다
 
         // 원자 단위 표시로 전환 (도킹은 원자 레벨에서만 의미가 있다)
         if (levelController != null && levelController.CurrentLevel != StructureLevelController.ViewLevel.AminoAcid)
@@ -222,6 +238,17 @@ public class DockingQuestController : MonoBehaviour
         if (outward.sqrMagnitude < 1e-6f) outward = slot.transform.position - pocketCenter;
         Vector3 entrance = pocketCenter + outward.normalized * entranceOffset;
 
+        // 이 화합물이 먼저 성공해야 할 다른 화합물(requires_prior_success_id)을 아직 못 채웠다면,
+        // 실제 outcome 대신 "순서 오류" 연출로 대체한다 — 예: potentiator를 corrector보다 먼저 고른 경우.
+        // 오답 취급(StericClash/OffTarget)이 아니라 "맞는 방향이지만 아직 때가 아니다"라는 신호다.
+        if (!string.IsNullOrEmpty(slot.Data.requires_prior_success_id) &&
+            !_succeededCompoundIds.Contains(slot.Data.requires_prior_success_id))
+        {
+            yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+            yield return OrderErrorSequence(slot, clone, pocketCenter, outward);
+            yield break;
+        }
+
         DockingOutcome outcome = slot.Data.Outcome;
 
         switch (outcome)
@@ -254,6 +281,50 @@ public class DockingQuestController : MonoBehaviour
                 Vector3 repelPoint = Vector3.Lerp(clone.transform.position, entrance, 0.6f);
                 yield return MoveTo(clone.transform, repelPoint, approachDuration * 0.7f, spin: true);
                 yield return Repel(clone.transform, (repelPoint - pocketCenter).normalized, 1.5f, 0.8f);
+                FinishFailure(slot, clone, failColor, outcome);
+                break;
+
+            // --- p53 Y220C 열안정성 퀘스트 전용 (같은 Snap 판정 + 결과별 짧은 VFX/HUD만 다르다) ---
+
+            case DockingOutcome.FragmentHit:
+                // 포켓엔 들어가 잠깐 안정화 효과가 보이지만, 오래 붙어있지 못하고 이탈한다.
+                yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                if (hud != null) hud.SetStability(0.35f, "LOW (fragment)");
+                yield return new WaitForSeconds(0.8f);
+                yield return MoveTo(clone.transform, entrance + outward.normalized * 1.1f, 0.6f, spin: true);
+                FinishFailure(slot, clone, noWarheadColor, outcome);
+                if (thermal != null) thermal.SetTemperature(thermal.CurrentCelsius); // HUD를 온도 기준값으로 되돌림
+                break;
+
+            case DockingOutcome.WrongStrategy:
+                // 이 포켓과 무관한 전략(예: MDM2 억제제) — 애초에 포켓에 들어가지 않고 입구에서 흩어진다.
+                yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                yield return Shake(clone.transform, 0.5f, 0.03f);
+                if (hud != null) hud.SetP53Quantity(0.8f); // p53 총량은 늘지만
+                yield return MoveTo(clone.transform, entrance + outward.normalized * 1.3f, 0.5f, spin: true);
+                FinishFailure(slot, clone, failColor, outcome); // stability/wobble/DNA 결합능은 그대로 — 회복되지 않는다
+                break;
+
+            case DockingOutcome.NoStabilization:
+                // 표적 원자 근처까지는 닿는다(proximity effect) — 그러나 안정화 상호작용은 형성되지 않는다.
+                yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                Vector3 proximityPos = _targetSulfur != null ? _targetSulfur.transform.position : pocketCenter;
+                yield return BurstEffect(proximityPos, new Color(1f, 0.7f, 0.3f), 0.3f, 0.4f);
+                yield return new WaitForSeconds(0.4f);
+                yield return MoveTo(clone.transform, entrance + outward.normalized * 1.0f, 0.5f, spin: true);
+                FinishFailure(slot, clone, noWarheadColor, outcome); // wobble 유지 = 안정화 실패
+                break;
+
+            case DockingOutcome.NonSelective:
+                // 이 포켓뿐 아니라 주변 다른 자리에도 동시에 비특이적 결합 마커가 나타난다.
+                yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                StartCoroutine(BurstEffect(pocketCenter + Vector3.up * 0.6f, failColor, 0.28f, 0.5f));
+                StartCoroutine(BurstEffect(pocketCenter - proteinLoader.transform.right * 0.8f, failColor, 0.28f, 0.5f));
+                if (hud != null) hud.ShowWarning("Non-selective binding detected — toxicity risk");
+                yield return Shake(clone.transform, 0.4f, 0.02f);
+                yield return MoveTo(clone.transform, entrance + outward.normalized * 0.9f, 0.4f, spin: true);
                 FinishFailure(slot, clone, failColor, outcome);
                 break;
         }
@@ -294,10 +365,51 @@ public class DockingQuestController : MonoBehaviour
         slot.SetResultColor(successColor);
         selectionPanel.ShowResult(slot.Data, successColor);
 
-        _questCompleted = true;
-        if (questUI != null) questUI.CompleteCurrentStageAndAdvance();
+        // p53 Y220C 퀘스트: 안정화제가 포켓에 락인되면 wobble이 가라앉고
+        // DNA 결합능이 회복된 것으로 표시한다(HUD Before/After 비교의 "After" 상태).
+        if (thermal != null) thermal.SetStabilized(true);
+        if (hud != null) hud.SetDnaBindingCompetent(true);
+
+        _succeededCompoundIds.Add(slot.Data.id);
+
+        // completes_stage가 false인 화합물(예: CFTR corrector)은 그 자체로는 충분하지 않다 —
+        // 단계를 끝내지 않고 패널을 다시 열어, 뒤이어 필요한 화합물(potentiator 등)을 고를 수 있게 한다.
+        if (slot.Data.completes_stage)
+        {
+            _questCompleted = true;
+            if (questUI != null) questUI.CompleteCurrentStageAndAdvance();
+        }
+        else
+        {
+            selectionPanel.Interactable = true;
+        }
+
         OnDockingFinished?.Invoke(DockingOutcome.Success, slot.Data);
-        // 성공 시 clone은 포켓에 그대로 남긴다 (KRAS OFF 락인 상태)
+        // 성공 시 clone은 포켓에 그대로 남긴다 (KRAS OFF 락인 상태 / CFTR 락인 상태)
+    }
+
+    /// <summary>
+    /// "순서 오류" 연출: 오답도 성공도 아니다 — 표적 자리에는 닿았지만 아직 준비가 안 된 상태라
+    /// 짧게 반응만 하고 물러난다. requires_prior_success_id 조건이 충족되지 않았을 때만 호출된다.
+    /// </summary>
+    private IEnumerator OrderErrorSequence(CompoundSlot slot, GameObject clone, Vector3 pocketCenter, Vector3 outward)
+    {
+        StartCoroutine(BurstEffect(pocketCenter, pocketHighlightColor, 0.4f, 0.5f));
+        yield return Shake(clone.transform, 0.35f, 0.015f);
+        yield return MoveTo(clone.transform, pocketCenter + outward.normalized * (entranceOffset + 0.3f), 0.4f, spin: true);
+        UnityEngine.Object.Destroy(clone);
+
+        StopPocketPulse();
+        ApplyPocketMarker();
+
+        Color orderColor = new Color(1f, 0.85f, 0.25f); // 경고색 — 실패(빨강)도 성공(초록)도 아니다
+        slot.SetResultColor(orderColor);
+        selectionPanel.ShowResult(slot.Data, orderColor,
+            messageOverride: slot.Data.order_error_message,
+            affinityOverride: "먼저 다른 후보물질이 필요해");
+        selectionPanel.Interactable = true;
+
+        OnDockingFinished?.Invoke(DockingOutcome.NoWarhead, slot.Data);
     }
 
     private void FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)
