@@ -104,6 +104,7 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
 CONFIGS = {
     "P00533": {"range": (712, 979), "mutations": (858, 790)},  # EGFR: L858R, T790M (키나아제 도메인)
     "P01116": {"range": None, "mutations": (12,)},             # KRAS: G12C (F-04 도킹 퀘스트 타깃)
+    "P00519": {"range": (242, 506), "mutations": (315,)},      # ABL1: T315I gatekeeper (키나아제 도메인)
 }
 
 if __name__ == "__main__":

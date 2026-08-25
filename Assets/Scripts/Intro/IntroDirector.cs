@@ -20,6 +20,9 @@ public class IntroDirector : MonoBehaviour
     public AIAssistantBrain assistant;
     public QuestSelectionBoard board;
     public QuestSession session;
+    [Tooltip("구조 최상위(Ribbon)에서 '이전'을 한 번 더 누르면(OnExitRequested) 현재 사건을 접고 " +
+             "퀘스트 선택으로 돌아온다. 비워두면 씬에서 자동 탐색")]
+    public StructureLevelController levelController;
     [Tooltip("비워두면 Camera.main")]
     public Camera targetCamera;
 
@@ -80,6 +83,7 @@ public class IntroDirector : MonoBehaviour
         if (assistant == null) assistant = FindFirstObjectByType<AIAssistantBrain>(FindObjectsInactive.Include);
         if (board == null) board = FindFirstObjectByType<QuestSelectionBoard>();
         if (session == null) session = FindFirstObjectByType<QuestSession>();
+        if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
 
         // 게임이 실제로 시작(Play)된 시점이므로 비서를 켠다.
         if (assistant != null) assistant.gameObject.SetActive(true);
@@ -93,11 +97,13 @@ public class IntroDirector : MonoBehaviour
     private void OnEnable()
     {
         if (board != null) board.OnQuestSelected += HandleQuestSelected;
+        if (levelController != null) levelController.OnExitRequested += HandleExitRequested;
     }
 
     private void OnDisable()
     {
         if (board != null) board.OnQuestSelected -= HandleQuestSelected;
+        if (levelController != null) levelController.OnExitRequested -= HandleExitRequested;
     }
 
     private void Start()
@@ -126,16 +132,53 @@ public class IntroDirector : MonoBehaviour
 
         if (startDelay > 0f) yield return new WaitForSeconds(startDelay);
 
-        // 1) 비서 인사
+        // 비서 인사 — 게임을 처음 켰을 때만 한다. 사건을 바꾸러 되돌아왔을 때는
+        // ReturnToQuestSelectionRoutine이 대신 짧은 한마디만 하고 바로 보드로 넘어간다.
         if (assistant != null)
         {
             assistant.SpeakGreeting();
             yield return WaitForAssistant();
         }
 
+        yield return SelectAndStartQuestRoutine();
+    }
+
+    /// <summary>
+    /// 진행 중이던 구조에서 최상위(Ribbon)까지 나온 뒤 '이전'을 한 번 더 누르면
+    /// (StructureLevelController.OnExitRequested) 여기로 들어온다. 지금 사건을 접고
+    /// 퀘스트 선택 보드를 다시 펼친다 — 인사말은 다시 하지 않는다.
+    /// </summary>
+    public void ReturnToQuestSelection()
+    {
+        if (IsRunning) return; // 이미 인트로/선택 진행 중이면 중복 시작하지 않는다
+
+        StopAllCoroutines();
+        StartCoroutine(ReturnToQuestSelectionRoutine());
+    }
+
+    private void HandleExitRequested() => ReturnToQuestSelection();
+
+    private IEnumerator ReturnToQuestSelectionRoutine()
+    {
+        IsRunning = true;
+        _chosen = null;
+
+        HideStage();
+        PlaceAssistantForIntro();
+
+        if (assistant != null) assistant.SpeakNow("다른 사건을 골라볼까?");
+
+        yield return SelectAndStartQuestRoutine();
+    }
+
+    /// <summary>퀘스트 보드를 펼치고 선택을 기다린 뒤, 고른 퀘스트를 시작한다.
+    /// 처음 플레이할 때(PlayRoutine)와 사건을 바꾸러 돌아왔을 때(ReturnToQuestSelectionRoutine)
+    /// 둘 다 이 지점부터는 같은 절차라 공용으로 뺐다.</summary>
+    private IEnumerator SelectAndStartQuestRoutine()
+    {
         if (beatBeforeBoard > 0f) yield return new WaitForSeconds(beatBeforeBoard);
 
-        // 2) 퀘스트 보드 펼치기
+        // 퀘스트 보드 펼치기
         if (board != null)
         {
             PlaceBoard();
@@ -148,18 +191,18 @@ public class IntroDirector : MonoBehaviour
             yield break;
         }
 
-        // 3) 선택 대기 — 타임아웃 없이 기다린다. 인트로는 사용자가 고를 때까지가 끝이다.
+        // 선택 대기 — 타임아웃 없이 기다린다. 인트로는 사용자가 고를 때까지가 끝이다.
         while (_chosen == null) yield return null;
 
-        // 4) 확인하고 보드를 접는다
+        // 확인하고 보드를 접는다
         board.Hide();
-        if (assistant != null) assistant.SpeakNow($"{_chosen.title}. 좋은 선택이에요. 바로 들어가죠.");
+        if (assistant != null) assistant.SpeakNow($"'{_chosen.title}' 사건, 좋아! 바로 조사하러 가보자.");
 
         if (beatBeforeQuest > 0f) yield return new WaitForSeconds(beatBeforeQuest);
 
-        // 5) 비서를 분자 옆자리로 넘기고 퀘스트를 시작한다.
-        //    무대를 다시 켜는 건 QuestSession.StartQuest가 맡는다 —
-        //    켜는 순서가 구조 로딩보다 앞서야 해서 그쪽에 두는 편이 안전하다.
+        // 비서를 분자 옆자리로 넘기고 퀘스트를 시작한다.
+        // 무대를 다시 켜는 건 QuestSession.StartQuest가 맡는다 —
+        // 켜는 순서가 구조 로딩보다 앞서야 해서 그쪽에 두는 편이 안전하다.
         MoveAssistantToQuestAnchor();
 
         if (session != null) session.StartQuest(_chosen);

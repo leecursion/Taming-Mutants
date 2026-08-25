@@ -7,8 +7,9 @@ using UnityEngine.Networking;
 
 /// <summary>
 /// F-04.2 후보물질 선택 패널.
-/// StreamingAssets/compounds/*.json 을 로드해 화합물들을 2x2 그리드로,
-/// 하나의 외곽 와이어프레임 박스 안에 3D 시각화한다.
+/// StreamingAssets/compounds/*.json 을 로드해 화합물들을 2x2 그리드로 3D 시각화한다.
+/// 칸을 둘러싸는 와이어프레임 박스는 없고, 대신 각 칸 위에서 비추는 스포트라이트와
+/// 바닥 글로우가 "빛으로 자리를 표시한 전시대" 느낌을 낸다(CompoundSlot 참고).
 ///
 /// 배치: 단백질 원자들의 실제 월드 경계(bounds)를 측정해서
 /// 카메라 시선 기준 "구조 바로 왼쪽 옆 + 상단 높이 일치" 위치에 놓고,
@@ -42,20 +43,17 @@ public class CompoundSelectionPanel : MonoBehaviour
     [Tooltip("홀로-오브 스타일 사용 여부 (끄면 기존 단색 구체)")]
     public bool useHoloOrbStyle = true;
 
-    [Header("그리드 레이아웃 (하나의 외곽 박스 안에 columns x rows)")]
+    [Header("그리드 레이아웃 (columns x rows 칸을 격자로 배치)")]
     [Tooltip("가로 칸 수 — 화합물 4개면 2로 두어 2x2")]
     public int columns = 2;
     [Tooltip("칸 한 변 크기 (unit)")]
     public float boxSize = 0.45f;
     [Tooltip("칸 간 간격")]
     public float spacing = 0.06f;
-    [Tooltip("외곽 박스와 칸 사이 여백")]
+    [Tooltip("칸 사이 여백(배치 계산에 사용, 시각적 박스는 없음)")]
     public float outerPadding = 0.07f;
-    [Tooltip("외곽 박스 색 (밝게)")]
-    public Color frameColor = new Color(0.25f, 0.75f, 1f);
-    [Tooltip("칸 프레임 색 (옅게 — 호버/결과 시 강조색으로 덮임)")]
+    [Tooltip("칸의 스포트라이트/바닥 글로우 색 (옅게 — 호버/결과 시 강조색으로 덮임)")]
     public Color cellFrameColor = new Color(0.2f, 0.35f, 0.45f);
-    public float frameThickness = 0.008f;
     [Tooltip("박스 안 분자 자전 속도 (도/초)")]
     public float moleculeSpinSpeed = 25f;
 
@@ -107,14 +105,12 @@ public class CompoundSelectionPanel : MonoBehaviour
     public bool Interactable { get; set; } = true;
 
     private readonly List<CompoundSlot> _slots = new List<CompoundSlot>();
-    private readonly List<Renderer> _outerFrame = new List<Renderer>();
-    private Transform _contentRoot;   // 슬롯/외곽박스/라벨이 모두 이 아래 — 레벨 연동 표시 토글용
-    private GameObject _outerFrameRoot;
+    private Transform _contentRoot;   // 슬롯/라벨이 모두 이 아래 — 레벨 연동 표시 토글용
     private CompoundSlot _hovered;
     private TextMesh _resultText;
     private TextMesh _affinityText;
     private Coroutine _loadRoutine;
-    private Vector3 _outerSize;       // 외곽 박스 크기 — 배치 계산에 사용
+    private Vector3 _outerSize;       // 칸 4개가 차지하는 전체 크기 — 배치/라벨 위치 계산에 사용
 
     private void Awake()
     {
@@ -295,8 +291,6 @@ public class CompoundSelectionPanel : MonoBehaviour
         foreach (var slot in _slots)
             if (slot != null) Destroy(slot.gameObject);
         _slots.Clear();
-        if (_outerFrameRoot != null) Destroy(_outerFrameRoot);
-        _outerFrame.Clear();
         _hovered = null;
         ClearResult();
         Interactable = true;
@@ -329,27 +323,17 @@ public class CompoundSelectionPanel : MonoBehaviour
             }
         }
 
-        BuildOuterBox(cols, rows, step);
-
-        if (_resultText == null) CreateResultLabels(); // 재로드 시 기존 라벨 재사용
-        PositionResultLabels();
-
-        if (autoPlace) PlaceNow();
-    }
-
-    // 4칸 전체를 감싸는 외곽 박스 1개
-    private void BuildOuterBox(int cols, int rows, float step)
-    {
-        _outerFrameRoot = new GameObject("OuterBox");
-        _outerFrameRoot.transform.SetParent(_contentRoot, false);
-
+        // 시각적 외곽 박스는 없지만, 배치(PlaceNow)와 결과 라벨 위치 계산에 쓸
+        // "칸 4개가 차지하는 전체 크기"는 여전히 필요하다.
         _outerSize = new Vector3(
             cols * step - spacing + outerPadding * 2f,
             rows * step - spacing + outerPadding * 2f,
             boxSize + outerPadding * 2f);
 
-        _outerFrame.AddRange(WireBox.Build(_outerFrameRoot.transform, _outerSize, frameThickness * 1.5f));
-        WireBox.SetColor(_outerFrame, frameColor);
+        if (_resultText == null) CreateResultLabels(); // 재로드 시 기존 라벨 재사용
+        PositionResultLabels();
+
+        if (autoPlace) PlaceNow();
     }
 
     private void CreateSlot(CompoundData data, Vector3 localPos)
@@ -364,7 +348,7 @@ public class CompoundSelectionPanel : MonoBehaviour
             warheadAtoms: null, shellMaterial: shell);
 
         var slot = slotGo.AddComponent<CompoundSlot>();
-        slot.Init(data, molecule, boxSize, cellFrameColor, frameThickness, moleculeSpinSpeed);
+        slot.Init(data, molecule, boxSize, cellFrameColor, moleculeSpinSpeed);
 
         CreateLabel(slotGo.transform, data.display_name, data.subtitle,
                     new Vector3(0f, -(boxSize * 0.5f - 0.01f), -boxSize * 0.5f));

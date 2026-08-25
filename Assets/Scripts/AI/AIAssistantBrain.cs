@@ -36,8 +36,9 @@ public class AIAssistantBrain : MonoBehaviour
     [TextArea(2, 4)]
     public string[] greetingLines =
     {
-        "안녕하세요. 저는 당신의 AI 공동연구자입니다.",
-        "오늘은 돌연변이 하나를 길들여 볼 거예요. 어떤 사례부터 보시겠어요?",
+        "안녕! 오늘부터 이 과학실에서 함께 일할 AI 도우미야.",
+        "그런데 방금 센서에 이상한 신호가 잡혔어. 우리 몸 세포 안에서 뭔가 평소와 다르게 움직이고 있대.",
+        "어떤 사건부터 조사해 볼까?",
     };
 
     [Header("자동 브리핑")]
@@ -48,9 +49,9 @@ public class AIAssistantBrain : MonoBehaviour
 
     [Header("실패 시 문구")]
     [TextArea(2, 4)]
-    public string offlineNotice = "지금은 외부 지식 연결이 꺼져 있어요. 제가 아는 범위에서 안내할게요.";
+    public string offlineNotice = "지금은 외부 지식 연결이 잠깐 꺼져 있어. 내가 아는 만큼 최대한 쉽게 설명해줄게!";
     [TextArea(2, 4)]
-    public string requestFailedNotice = "연결이 잘 안 되네요. 잠시 뒤에 다시 물어봐 주세요.";
+    public string requestFailedNotice = "어? 연결이 잠깐 끊겼나 봐. 조금 있다가 다시 물어봐 줄래?";
 
     /// <summary>백엔드에 실제로 물어볼 수 있는 상태인지.</summary>
     public bool CanUseLlm => client != null && client.IsConfigured;
@@ -172,11 +173,11 @@ public class AIAssistantBrain : MonoBehaviour
 
         if (!CanUseLlm)
         {
-            Speak("제가 드릴 수 있는 힌트는 여기까지예요. 구조를 회전시켜 다른 각도에서 살펴보세요.");
+            Speak("여기까지가 내가 줄 수 있는 힌트야! 구조를 손으로 돌려가며 다른 각도에서 한번 살펴봐.");
             return;
         }
 
-        AskAssistant("지금 단계에서 막혔어요. 정답을 바로 알려주지 말고 한 단계만 더 힌트를 주세요.");
+        AskAssistant("지금 단계에서 막혔어요. 중학생도 이해할 수 있게 쉬운 말로, 정답을 바로 알려주지 말고 한 단계만 더 힌트를 주세요.");
     }
 
     /// <summary>
@@ -199,7 +200,7 @@ public class AIAssistantBrain : MonoBehaviour
 
         SpeakNow(spoken);
         SetState(AIAssistantState.Thinking);
-        client.Ask($"{label}에 대해 두세 문장으로 설명해줘.", BuildContext(label),
+        client.Ask($"{label}에 대해 중학생도 이해할 수 있게 쉬운 말로 두세 문장으로 설명해줘.", BuildContext(label),
             onReply: Speak,
             onFailed: _ => { /* 이미 이름은 말했으니 실패는 조용히 넘긴다 */ });
     }
@@ -227,7 +228,7 @@ public class AIAssistantBrain : MonoBehaviour
         _hintIndex = 0;
         if (quest == null) return;
 
-        Speak($"{quest.title} 사례를 시작합니다.");
+        Speak($"좋아, '{quest.title}' 사건 조사를 시작하자!");
         if (!string.IsNullOrWhiteSpace(quest.summary)) Speak(quest.summary);
     }
 
@@ -248,7 +249,7 @@ public class AIAssistantBrain : MonoBehaviour
 
         SetState(AIAssistantState.Thinking);
         client.Ask(
-            $"'{briefing.title}' 단계를 시작했어요. 지금 무엇에 집중해야 하는지 두세 문장으로 짚어주세요.",
+            $"'{briefing.title}' 단계를 시작했어요. 중학생도 이해할 수 있게 쉬운 말로, 지금 무엇에 집중해야 하는지 두세 문장으로 짚어주세요.",
             BuildContext(),
             onReply: Speak,
             onFailed: _ => { /* 대본 브리핑은 이미 말했으므로 실패해도 진행에 지장이 없다 */ });
@@ -258,8 +259,8 @@ public class AIAssistantBrain : MonoBehaviour
     {
         SetState(AIAssistantState.Speaking);
         Speak(quest != null
-            ? $"{quest.title} 사례를 끝냈습니다. 수고하셨어요."
-            : "퀘스트를 끝냈습니다. 수고하셨어요.");
+            ? $"'{quest.title}' 사건 해결 완료! 정말 잘했어."
+            : "사건 해결 완료! 정말 잘했어.");
     }
 
     private void HandleClientError(string reason)

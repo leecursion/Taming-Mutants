@@ -9,7 +9,9 @@ using UnityEngine.UI;
 /// 배치: 화면 우하단 고정. 구조를 가리지 않도록 작게 만들고,
 /// 퀘스트 보드와 같은 홀로그램 톤(HoloSpriteFactory 패널/외곽선/글로우 + HoloFont)으로 그린다.
 /// 내용: "◀ 이전" 버튼 하나와 그 아래 현재 단계 이름만.
-/// 구조가 로드되어 리본이 보일 때 함께 나타나고, 리본(최상위)에서는 흐리게 비활성된다.
+/// 구조가 로드되어 리본이 보일 때 함께 나타난다. 리본(최상위)에서 한 번 더 누르면
+/// StructureLevelController.OnExitRequested가 발생해 퀘스트 선택으로 돌아가므로,
+/// 이 버튼은 항상 눌릴 수 있게 켜둔다(더 이상 리본에서 비활성화하지 않는다).
 /// </summary>
 public class StructureLevelBackButton : MonoBehaviour
 {
@@ -55,6 +57,7 @@ public class StructureLevelBackButton : MonoBehaviour
         if (levelController != null)
         {
             levelController.OnLevelChanged += HandleLevelChanged;
+            levelController.OnExitRequested += HandleExitRequested;
             _proteinLoader = levelController.GetComponent<ProteinLoader>();
             if (_proteinLoader != null) _proteinLoader.OnLoaded += HandleProteinLoaded;
         }
@@ -62,7 +65,11 @@ public class StructureLevelBackButton : MonoBehaviour
 
     private void OnDisable()
     {
-        if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
+        if (levelController != null)
+        {
+            levelController.OnLevelChanged -= HandleLevelChanged;
+            levelController.OnExitRequested -= HandleExitRequested;
+        }
         if (_proteinLoader != null) _proteinLoader.OnLoaded -= HandleProteinLoaded;
     }
 
@@ -80,12 +87,18 @@ public class StructureLevelBackButton : MonoBehaviour
         if (_canvas != null) _canvas.gameObject.SetActive(true);
     }
 
+    // 리본(최상위)을 나가면(OnExitRequested) 구조 자체가 사라지고 퀘스트 보드가 다시 뜨므로,
+    // 그 사이에는 이 버튼도 함께 숨긴다. 다음 사건이 로드되면 HandleProteinLoaded가 다시 켠다.
+    private void HandleExitRequested()
+    {
+        if (_canvas != null) _canvas.gameObject.SetActive(false);
+    }
+
     private void HandleLevelChanged(StructureLevelController.ViewLevel level)
     {
-        // 버튼은 항상 표시하되, 최상위(리본)에서는 흐리게 — 존재만 알 수 있게 한다
-        bool canGoBack = level != StructureLevelController.ViewLevel.Ribbon;
-        if (_button != null) _button.interactable = canGoBack;
-        if (_buttonGroup != null) _buttonGroup.alpha = canGoBack ? 1f : 0.35f;
+        // 모든 단계에서 버튼이 눌린다 — 리본에서 누르면 퀘스트 선택으로 돌아간다(OnExitRequested).
+        if (_button != null) _button.interactable = true;
+        if (_buttonGroup != null) _buttonGroup.alpha = 1f;
 
         if (_levelText != null)
         {
