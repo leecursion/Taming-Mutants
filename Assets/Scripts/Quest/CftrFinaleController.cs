@@ -66,11 +66,11 @@ public class CftrFinaleController : MonoBehaviour
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
     }
 
-    private void HandleDockingFinished(DockingOutcome outcome, CompoundData data)
+    private void HandleDockingFinished(DockingResult result)
     {
         if (_finalePlayed) return;
-        if (outcome != DockingOutcome.Success) return;
-        if (data == null || data.id != finaleCompoundId) return;
+        if (!result.IsSuccess) return;
+        if (result.Compound == null || result.Compound.id != finaleCompoundId) return;
 
         _finalePlayed = true;
         StartCoroutine(FinaleRoutine());

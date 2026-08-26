@@ -58,6 +58,8 @@ public class IntroDirector : MonoBehaviour
     public float beatBeforeBoard = 0.35f;
     [Tooltip("비서의 인사가 끝나기를 기다리는 최대 시간. 넘으면 그냥 진행한다.")]
     public float maxWaitForGreeting = 12f;
+    [Tooltip("고른 단백질 설명(대본 + LLM 응답)이 끝나기를 기다리는 최대 시간. 넘으면 그냥 진행한다.")]
+    public float maxWaitForTargetIntro = 20f;
     [Tooltip("선택 확인 대사 뒤 퀘스트를 시작하기까지의 간격")]
     public float beatBeforeQuest = 1.2f;
 
@@ -166,7 +168,13 @@ public class IntroDirector : MonoBehaviour
         HideStage();
         PlaceAssistantForIntro();
 
-        if (assistant != null) assistant.SpeakNow("다른 사건을 골라볼까?");
+        // 방금 나온 사건에서 아직 답이 오지 않은 질문이 있었다면 여기서 끊는다. 끊지 않으면
+        // 뒤늦게 도착한 답이 "다른 사건을 골라볼까?" 뒤에 붙어 이전 사건 얘기를 계속하게 된다.
+        if (assistant != null)
+        {
+            assistant.ResetConversation();
+            assistant.SpeakNow("다른 사건을 골라볼까?");
+        }
 
         yield return SelectAndStartQuestRoutine();
     }
@@ -194,9 +202,17 @@ public class IntroDirector : MonoBehaviour
         // 선택 대기 — 타임아웃 없이 기다린다. 인트로는 사용자가 고를 때까지가 끝이다.
         while (_chosen == null) yield return null;
 
-        // 확인하고 보드를 접는다
+        // 확인하고 보드를 접는다. 고른 단백질이 어떤 아이인지는 비서가 설명한다 —
+        // 대본 한마디로 즉시 반응하고, 백엔드가 있으면 LLM 설명을 이어 붙인다.
         board.Hide();
-        if (assistant != null) assistant.SpeakNow($"'{_chosen.title}' 사건, 좋아! 바로 조사하러 가보자.");
+        if (assistant != null)
+        {
+            assistant.IntroduceQuestTarget(_chosen);
+
+            // 설명이 끝나기를 기다렸다가 퀘스트를 시작한다. 기다리지 않으면 뒤늦게 도착한
+            // LLM 설명이 이미 시작된 도입 시나리오 대사 사이에 끼어든다.
+            yield return WaitForAssistantIdle(maxWaitForTargetIntro);
+        }
 
         if (beatBeforeQuest > 0f) yield return new WaitForSeconds(beatBeforeQuest);
 
@@ -323,6 +339,23 @@ public class IntroDirector : MonoBehaviour
         yield return null;
 
         while (assistant != null && assistant.IsBusy && Time.time < deadline)
+            yield return null;
+    }
+
+    /// <summary>
+    /// 비서가 말을 마치고, 보낸 요청의 답까지 다 받을 때까지 기다린다.
+    ///
+    /// <see cref="AIAssistantBrain.IsBusy"/>만 보면 LLM 응답을 기다리는 몇 초 동안
+    /// 말풍선 큐가 비어 "끝났다"고 판단해 버린다. 상한을 두는 이유는 인사 대기와 같다 —
+    /// 응답이 영영 오지 않아도 퀘스트는 시작돼야 한다.
+    /// </summary>
+    private IEnumerator WaitForAssistantIdle(float maxSeconds)
+    {
+        float deadline = Time.time + Mathf.Max(maxSeconds, 0.1f);
+
+        yield return null;
+
+        while (assistant != null && assistant.IsBusyOrWaiting && Time.time < deadline)
             yield return null;
     }
 

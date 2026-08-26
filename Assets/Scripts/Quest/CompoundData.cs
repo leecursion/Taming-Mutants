@@ -18,6 +18,31 @@ public enum DockingOutcome
 }
 
 /// <summary>
+/// 도킹 시도 한 번의 결과. <see cref="DockingQuestController.OnDockingFinished"/>가 실어 보낸다.
+///
+/// <see cref="DockingOutcome"/>만 넘기지 않는 이유는 "순서 오류"다 — 아직 때가 아니어서 물러난 경우도
+/// 이벤트에는 NoWarhead로 실려 나가는데, 그걸 그대로 읽으면 비서가 "고정할 갈고리가 없었어"라는
+/// 엉뚱한 설명을 한다. 방향은 맞았고 순서만 이른 상황이라 안내가 정반대가 된다.
+/// </summary>
+public struct DockingResult
+{
+    /// <summary>판정 결과. <see cref="IsOrderError"/>가 true면 이 값은 연출용 대체값이다.</summary>
+    public DockingOutcome Outcome;
+
+    /// <summary>시도한 후보물질.</summary>
+    public CompoundData Compound;
+
+    /// <summary>먼저 성공해야 할 다른 물질이 남아 "아직 때가 아니다"로 물러난 경우.</summary>
+    public bool IsOrderError;
+
+    /// <summary>화면에 실제로 표시된 문구. 비서가 말할 바닥선이 된다.</summary>
+    public string Message;
+
+    /// <summary>성공 판정인지. 순서 오류는 성공이 아니다.</summary>
+    public bool IsSuccess => !IsOrderError && Outcome == DockingOutcome.Success;
+}
+
+/// <summary>
 /// StreamingAssets/compounds/*.json 스키마.
 /// 좌표는 단백질 JSON과 동일하게 Angstrom 단위이며,
 /// 렌더링 시 ProteinLoader와 같은 0.1배 축소를 적용한다.

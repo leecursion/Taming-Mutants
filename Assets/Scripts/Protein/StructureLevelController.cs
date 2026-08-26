@@ -75,6 +75,30 @@ public class StructureLevelController : MonoBehaviour
     public float maxRayDistance = 100f;
 
     public ViewLevel CurrentLevel { get; private set; } = ViewLevel.Ribbon;
+
+    /// <summary>
+    /// true인 동안 클릭으로 단계를 내려가지 못한다.
+    ///
+    /// 비서가 설명을 끝내기 전에 사용자가 구조를 눌러 다음 단계로 넘어가면, 방금 시작한 해설이
+    /// 곧바로 다음 단계 해설로 덮여 아무것도 못 듣게 된다. 누가 이 값을 켜고 끄는지는
+    /// 여기서 알 필요가 없다 — 이 컴포넌트는 "지금 입력을 받는가"만 본다.
+    /// (지금은 <see cref="AIAssistantBrain"/>이 말하는 동안 켠다.)
+    /// </summary>
+    public bool InputLocked
+    {
+        get => _inputLocked;
+        set
+        {
+            if (_inputLocked == value) return;
+
+            _inputLocked = value;
+            // 잠긴 동안에는 클릭 유도 점멸을 멈춘다. 눌러도 안 되는데 계속 반짝이면
+            // 사용자는 클릭이 먹지 않는 걸 고장으로 받아들인다.
+            ClickHintPulse.Suppressed = value;
+        }
+    }
+
+    private bool _inputLocked;
     public event Action<ViewLevel> OnLevelChanged;
 
     private ProteinLoader _proteinLoader;
@@ -291,6 +315,7 @@ public class StructureLevelController : MonoBehaviour
 
     private void TryClickAtMouse()
     {
+        if (InputLocked) return;
         if (targetCamera == null || Mouse.current == null) return;
         // UI 버튼(예: StructureLevelBackButton) 위 클릭은 3D 선택으로 처리하지 않음
         if (UnityEngine.EventSystems.EventSystem.current != null &&
@@ -431,6 +456,14 @@ public class HelixSegmentInfo : MonoBehaviour
 /// </summary>
 public class ClickHintPulse : MonoBehaviour
 {
+    /// <summary>
+    /// true인 동안 점멸을 멈추고 기본색으로 가라앉는다.
+    ///
+    /// 세그먼트마다 따로 켜고 끄지 않고 정적 플래그로 둔 이유: 화면에 떠 있는 세그먼트는
+    /// 수백 개인데 잠금은 전부 같은 순간에 걸린다. 하나씩 순회하면 매번 수백 번 접근하게 된다.
+    /// </summary>
+    public static bool Suppressed;
+
     private Renderer _renderer;
     private MaterialPropertyBlock _mpb;
     private Color _baseColor;
@@ -451,7 +484,10 @@ public class ClickHintPulse : MonoBehaviour
     private void Update()
     {
         if (_renderer == null) return;
-        float t = (Mathf.Sin(Time.time * _speed + _phase) + 1f) * 0.5f;
+
+        // 잠긴 동안에는 t=0으로 고정해 기본색으로 눕힌다. Update를 그냥 건너뛰면
+        // 잠기기 직전 프레임의 밝기에서 멈춰 어중간하게 빛난 채로 남는다.
+        float t = ClickHintPulse.Suppressed ? 0f : (Mathf.Sin(Time.time * _speed + _phase) + 1f) * 0.5f;
         Color c = Color.Lerp(_baseColor, _hintColor, t);
 
         _renderer.GetPropertyBlock(_mpb);

@@ -56,12 +56,18 @@ public class SolarChatClient : AIChatBackend
         "- 정답을 통째로 알려주지 말고, 플레이어가 스스로 찾도록 한 걸음만 이끕니다.\n" +
         "- 확실하지 않은 수치나 사실은 지어내지 말고 모른다고 말합니다.";
 
-    [Tooltip("추론 강도. 높일수록 응답이 좋아지지만 느려집니다. None이면 요청에서 생략합니다.")]
-    public SolarReasoningEffort reasoningEffort = SolarReasoningEffort.Medium;
-    [Tooltip("응답 최대 토큰. 0이면 지정하지 않습니다.")]
-    public int maxTokens = 400;
+    [Tooltip("추론 강도. 높일수록 응답이 좋아지지만 느려집니다. None이면 요청에서 생략합니다.\n" +
+             "주의: max_tokens는 추론과 본문을 합친 총 예산입니다. 강도를 올리면 max_tokens도 함께 올리세요.\n" +
+             "말풍선용 2~3문장짜리 답에는 추론이 필요 없어 None을 권장합니다.")]
+    public SolarReasoningEffort reasoningEffort = SolarReasoningEffort.None;
+    [Tooltip("응답 최대 토큰(추론 + 본문 합계). 0이면 지정하지 않습니다.")]
+    public int maxTokens = 1024;
     [Tooltip("응답을 기다리는 최대 시간(초). 추론 강도를 올리면 넉넉히 잡아야 합니다.")]
     public int timeoutSeconds = 40;
+
+    [Tooltip("추론이 예산을 다 써서 본문이 비어 돌아오면, 추론을 끄고 한 번만 다시 보냅니다. " +
+             "설정을 고치기 전에도 비서가 침묵하지 않게 하는 안전망입니다.")]
+    public bool retryWithoutReasoningOnEmptyReply = true;
 
     [Header("디버그")]
     [Tooltip("켜면 키가 있어도 호출하지 않고 항상 실패시킵니다. 대본 대사 확인용.")]
@@ -109,58 +115,124 @@ public class SolarChatClient : AIChatBackend
         StartCoroutine(AskRoutine(userMessage, context, onReply, onFailed));
     }
 
+    /// <summary>
+    /// 추론이 본문을 남길 수 있을 만큼 예산이 있어야 그 강도를 쓴다.
+    ///
+    /// max_tokens는 추론과 본문을 합친 총 예산이라, 예산이 빠듯하면 추론이 다 먹고
+    /// 본문이 빈 채로 돌아온다. 그걸 보내고 나서 알아채면 요청 한 번이 통째로 버려지고
+    /// 사용자는 두 배로 기다린다. 보내기 전에 걸러내는 편이 낫다.
+    ///
+    /// 씬에 이미 저장된 설정(추론 medium + max_tokens 400 같은)을 고치지 않아도
+    /// 헛도는 왕복이 생기지 않게 하는 것이 목적이다.
+    /// </summary>
+    private SolarReasoningEffort ResolveEffort()
+    {
+        if (reasoningEffort == SolarReasoningEffort.None || maxTokens <= 0) return reasoningEffort;
+        if (maxTokens >= MinTokensForReasoning) return reasoningEffort;
+
+        if (!_effortDowngradeLogged)
+        {
+            _effortDowngradeLogged = true;
+            Debug.LogWarning(
+                $"[SolarChatClient] max_tokens({maxTokens})가 추론을 감당하기엔 작아 " +
+                $"reasoning_effort={ReasoningEffortValue(reasoningEffort)}를 끄고 보냅니다. " +
+                $"추론을 쓰려면 Max Tokens를 {MinTokensForReasoning} 이상으로 올리세요. " +
+                "(말풍선용 짧은 답에는 추론이 필요 없습니다.)", this);
+        }
+
+        return SolarReasoningEffort.None;
+    }
+
+    /// <summary>이 아래로는 추론이 예산을 다 먹고 본문이 남지 않는다.</summary>
+    private const int MinTokensForReasoning = 700;
+
+    // 경고는 한 번만 — 요청마다 찍으면 콘솔이 같은 줄로 덮인다.
+    private bool _effortDowngradeLogged;
+
+    /// <summary>한 번 보낸 결과. 코루틴은 반환값을 못 가지므로 담아서 넘긴다.</summary>
+    private class Attempt
+    {
+        public string Reply;         // 성공했을 때의 본문
+        public string Error;         // 실패 사유
+        public bool BudgetExhausted; // 추론이 예산을 다 써서 본문이 비었는가
+    }
+
     private IEnumerator AskRoutine(string userMessage, AIRequestContext context,
                                    Action<string> onReply, Action<string> onFailed)
     {
         string situation = context != null ? context.Compose() : string.Empty;
-        string body = BuildRequestJson(situation, userMessage);
-
-        if (logTraffic) Debug.Log($"[SolarChatClient] 요청\n{body}", this);
+        SolarReasoningEffort effort = ResolveEffort();
 
         PendingRequests++;
         try
         {
-            using (var request = new UnityWebRequest(endpoint, UnityWebRequest.kHttpVerbPOST))
+            var attempt = new Attempt();
+            yield return SendOnce(situation, userMessage, effort, attempt);
+
+            // 추론에 예산을 다 쓰고 본문이 비어 온 경우. 인스펙터 설정을 고치기 전에도 비서가
+            // 침묵하지 않도록 추론을 끄고 한 번만 다시 보낸다. 같은 예산이라도 추론이 빠지면
+            // 전부 본문에 쓰이므로 대개 이 한 번으로 답이 온다.
+            if (attempt.Reply == null && attempt.BudgetExhausted
+                && retryWithoutReasoningOnEmptyReply && effort != SolarReasoningEffort.None)
             {
-                request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
-                request.timeout = Mathf.Max(timeoutSeconds, 1);
+                Debug.LogWarning(
+                    $"[SolarChatClient] 추론(reasoning_effort={ReasoningEffortValue(effort)})이 max_tokens({maxTokens})를 " +
+                    "다 써서 본문이 비었습니다. 추론 없이 한 번 더 보냅니다. " +
+                    "인스펙터에서 Reasoning Effort를 None으로 낮추거나 Max Tokens를 늘리세요.", this);
 
-                yield return request.SendWebRequest();
-
-                string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
-                if (logTraffic) Debug.Log($"[SolarChatClient] 응답 ({request.responseCode})\n{responseText}", this);
-
-                if (request.result != UnityWebRequest.Result.Success)
-                {
-                    // 본문에 원인이 적혀 오는 경우가 많다 (잘못된 키, 없는 모델 이름 등).
-                    string detail = ExtractApiError(responseText) ?? request.error;
-                    string reason = $"HTTP {request.responseCode} — {detail}";
-
-                    Debug.LogWarning($"[SolarChatClient] 요청 실패: {reason}", this);
-                    RaiseError(reason);
-                    onFailed?.Invoke(reason);
-                    yield break;
-                }
-
-                string reply = ParseReply(responseText, out string parseError);
-                if (reply == null)
-                {
-                    Debug.LogWarning($"[SolarChatClient] 응답 해석 실패: {parseError}", this);
-                    RaiseError(parseError);
-                    onFailed?.Invoke(parseError);
-                    yield break;
-                }
-
-                RaiseReply(reply);
-                onReply?.Invoke(reply);
+                attempt = new Attempt();
+                yield return SendOnce(situation, userMessage, SolarReasoningEffort.None, attempt);
             }
+
+            if (attempt.Reply == null)
+            {
+                Debug.LogWarning($"[SolarChatClient] 요청 실패: {attempt.Error}", this);
+                RaiseError(attempt.Error);
+                onFailed?.Invoke(attempt.Error);
+                yield break;
+            }
+
+            RaiseReply(attempt.Reply);
+            onReply?.Invoke(attempt.Reply);
         }
         finally
         {
             PendingRequests--;
+        }
+    }
+
+    /// <summary>요청을 한 번 보내고 결과를 <paramref name="result"/>에 채운다.</summary>
+    private IEnumerator SendOnce(string situation, string userMessage,
+                                 SolarReasoningEffort effort, Attempt result)
+    {
+        string body = BuildRequestJson(situation, userMessage, effort);
+
+        if (logTraffic) Debug.Log($"[SolarChatClient] 요청\n{body}", this);
+
+        using (var request = new UnityWebRequest(endpoint, UnityWebRequest.kHttpVerbPOST))
+        {
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
+            request.timeout = Mathf.Max(timeoutSeconds, 1);
+
+            yield return request.SendWebRequest();
+
+            string responseText = request.downloadHandler != null ? request.downloadHandler.text : null;
+            if (logTraffic) Debug.Log($"[SolarChatClient] 응답 ({request.responseCode})\n{responseText}", this);
+
+            if (request.result != UnityWebRequest.Result.Success)
+            {
+                // 본문에 원인이 적혀 오는 경우가 많다 (잘못된 키, 없는 모델 이름 등).
+                string detail = ExtractApiError(responseText) ?? request.error;
+                result.Error = $"HTTP {request.responseCode} — {detail}";
+                yield break;
+            }
+
+            result.Reply = ParseReply(responseText, out string parseError, out bool budgetExhausted);
+            result.Error = parseError;
+            result.BudgetExhausted = budgetExhausted;
         }
     }
 
@@ -173,7 +245,7 @@ public class SolarChatClient : AIChatBackend
     /// reasoning_effort나 max_tokens에 빈 값이 실려 가면 서버가 400으로 거절한다.
     /// 넣을 것만 골라 쓰려면 손으로 조립하는 편이 확실하다.
     /// </summary>
-    private string BuildRequestJson(string situation, string userMessage)
+    private string BuildRequestJson(string situation, string userMessage, SolarReasoningEffort effort)
     {
         var builder = new StringBuilder(512);
         builder.Append('{');
@@ -196,8 +268,8 @@ public class SolarChatClient : AIChatBackend
         AppendMessage(builder, "user", userMessage);
         builder.Append(']');
 
-        string effort = ReasoningEffortValue();
-        if (effort != null) builder.Append(",\"reasoning_effort\":").Append(Quote(effort));
+        string effortValue = ReasoningEffortValue(effort);
+        if (effortValue != null) builder.Append(",\"reasoning_effort\":").Append(Quote(effortValue));
 
         if (maxTokens > 0) builder.Append(",\"max_tokens\":").Append(maxTokens);
 
@@ -214,9 +286,11 @@ public class SolarChatClient : AIChatBackend
                .Append('}');
     }
 
-    private string ReasoningEffortValue()
+    private string ReasoningEffortValue() => ReasoningEffortValue(reasoningEffort);
+
+    private static string ReasoningEffortValue(SolarReasoningEffort effort)
     {
-        switch (reasoningEffort)
+        switch (effort)
         {
             case SolarReasoningEffort.Low: return "low";
             case SolarReasoningEffort.Medium: return "medium";
@@ -289,9 +363,17 @@ public class SolarChatClient : AIChatBackend
         public string code;
     }
 
-    private static string ParseReply(string json, out string error)
+    /// <summary>
+    /// 응답에서 본문을 꺼낸다. 실패하면 null과 사유를 돌려준다.
+    ///
+    /// <paramref name="budgetExhausted"/>는 "추론이 max_tokens를 다 써서 본문이 비었다"를 뜻한다.
+    /// 이 경우만 추론을 끄고 재시도할 가치가 있다 — 다른 실패(키 오류, 깨진 JSON)는
+    /// 몇 번을 다시 보내도 같은 결과가 나온다.
+    /// </summary>
+    private static string ParseReply(string json, out string error, out bool budgetExhausted)
     {
         error = null;
+        budgetExhausted = false;
 
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -316,11 +398,21 @@ public class SolarChatClient : AIChatBackend
             return null;
         }
 
-        ResponseMessage message = response.choices[0].message;
+        Choice choice = response.choices[0];
+        ResponseMessage message = choice.message;
         if (message == null || string.IsNullOrWhiteSpace(message.content))
         {
-            // 추론에만 토큰을 다 쓰고 본문이 비는 경우가 있다. max_tokens를 올리면 해결된다.
-            error = "응답 본문(content)이 비어 있습니다. max_tokens를 늘려보세요.";
+            // finish_reason이 "length"면 예산이 바닥나 잘린 것이다. 추론에만 토큰을 다 쓰고
+            // 본문이 한 글자도 안 나온 상태 — 원인을 그대로 적어 둬야 다음에 헤매지 않는다.
+            bool truncated = choice.finish_reason == "length";
+            bool hadReasoning = message != null && !string.IsNullOrWhiteSpace(message.reasoning);
+
+            budgetExhausted = truncated || hadReasoning;
+
+            error = budgetExhausted
+                ? "추론(reasoning)이 max_tokens를 다 써서 본문(content)이 비었습니다. " +
+                  "Reasoning Effort를 None으로 낮추거나 Max Tokens를 늘리세요."
+                : $"응답 본문(content)이 비어 있습니다. (finish_reason={choice.finish_reason})";
             return null;
         }
 

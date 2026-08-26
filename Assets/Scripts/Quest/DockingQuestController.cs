@@ -58,7 +58,11 @@ public class DockingQuestController : MonoBehaviour
     public Color pocketMarkerColor = new Color(0.85f, 0.35f, 0.95f);
 
     /// <summary>도킹 연출이 끝날 때 발생. Success면 퀘스트 통과.</summary>
-    public event Action<DockingOutcome, CompoundData> OnDockingFinished;
+    /// <summary>
+    /// 도킹 시도가 끝날 때마다 발생한다. 성공·실패·순서 오류를 모두 싣는다.
+    /// <see cref="AIAssistantBrain"/>이 이걸 받아 결과를 설명한다.
+    /// </summary>
+    public event Action<DockingResult> OnDockingFinished;
 
     private readonly List<AtomInfo> _pocketAtoms = new List<AtomInfo>();
     private readonly List<GameObject> _questSpawned = new List<GameObject>(); // 락인된 클론·공유결합 등 퀘스트 산출물
@@ -390,7 +394,12 @@ public class DockingQuestController : MonoBehaviour
             selectionPanel.Interactable = true;
         }
 
-        OnDockingFinished?.Invoke(DockingOutcome.Success, slot.Data);
+        OnDockingFinished?.Invoke(new DockingResult
+        {
+            Outcome = DockingOutcome.Success,
+            Compound = slot.Data,
+            Message = slot.Data.result_message,
+        });
         // 성공 시 clone은 포켓에 그대로 남긴다 (KRAS OFF 락인 상태 / CFTR 락인 상태)
     }
 
@@ -416,7 +425,13 @@ public class DockingQuestController : MonoBehaviour
         selectionPanel.Interactable = true;
         if (cftr != null) cftr.HandleOrderError(slot.Data.id);
 
-        OnDockingFinished?.Invoke(DockingOutcome.NoWarhead, slot.Data);
+        OnDockingFinished?.Invoke(new DockingResult
+        {
+            Outcome = DockingOutcome.NoWarhead, // 연출 계열은 NoWarhead와 같지만 판정은 다르다
+            Compound = slot.Data,
+            IsOrderError = true,
+            Message = slot.Data.order_error_message,
+        });
     }
 
     private void FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)
@@ -429,7 +444,12 @@ public class DockingQuestController : MonoBehaviour
         selectionPanel.ShowResult(slot.Data, color);
         selectionPanel.Interactable = true; // 재도전 허용
         if (cftr != null) cftr.HandleCompoundFailure(slot.Data.id, outcome);
-        OnDockingFinished?.Invoke(outcome, slot.Data);
+        OnDockingFinished?.Invoke(new DockingResult
+        {
+            Outcome = outcome,
+            Compound = slot.Data,
+            Message = slot.Data.result_message,
+        });
     }
 
     // --- 이펙트/헬퍼 ---
