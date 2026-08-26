@@ -32,17 +32,18 @@ public class QuestSelectionBoard : MonoBehaviour
     [Tooltip("끄면 아래 metersPerCanvasUnit을 그대로 쓴다. (거리에 따라 크기가 변한다)")]
     public bool fitToViewport = true;
     [Tooltip("보드 폭이 화면 가로에서 차지할 최대 비율")]
-    [Range(0.2f, 0.95f)] public float viewportWidthFraction = 0.68f;
+    [Range(0.2f, 0.95f)] public float viewportWidthFraction = 0.56f;
     [Tooltip("보드 높이가 화면 세로에서 차지할 최대 비율. 카드가 많아지면 이쪽이 먼저 걸린다.")]
-    [Range(0.2f, 0.95f)] public float viewportHeightFraction = 0.72f;
+    [Range(0.2f, 0.95f)] public float viewportHeightFraction = 0.62f;
     [Tooltip("fitToViewport를 끌 때 쓰는 고정 스케일 (캔버스 1unit이 차지하는 m)")]
     public float metersPerCanvasUnit = 0.0022f;
 
     [Header("레이아웃 (캔버스 단위)")]
     [Tooltip("보드 기준 폭. 실제 월드 크기는 위 비율이 정하므로 여기는 '가로세로 비율'만 결정한다.")]
     public float boardWidth = 900f;
-    public float cardHeight = 240f;
-    public float cardSpacing = 20f;
+    [Tooltip("카드의 최소 높이. 줄거리가 길면 카드는 글에 맞춰 이보다 커진다.")]
+    public float cardMinHeight = 150f;
+    public float cardSpacing = 16f;
 
     [Header("페이지네이션")]
     [Tooltip("한 페이지에 보여줄 카드 수. 퀘스트가 계속 늘어나면 카드가 화면 비율에 맞춰 " +
@@ -50,7 +51,7 @@ public class QuestSelectionBoard : MonoBehaviour
              "MaxCardsPerPage(2)로 상한이 고정되어 있어 여기 값을 더 키워도 한 페이지엔 2장까지만 나온다.")]
     public int cardsPerPage = 2;
     [Tooltip("페이지 이동 버튼/표시줄 높이 (캔버스 단위)")]
-    public float pagerHeight = 64f;
+    public float pagerHeight = 52f;
 
     /// <summary>
     /// 한 페이지에 보일 카드 수의 절대 상한. Inspector 값이나 예전 씬에 저장된 값이 무엇이든
@@ -86,6 +87,10 @@ public class QuestSelectionBoard : MonoBehaviour
     private CanvasGroup _group;
     private RectTransform _content;
     private RectTransform _cardsContainer;
+    private VerticalLayoutGroup _cardsLayout;
+    // 카탈로그를 통틀어 가장 큰 카드의 높이. 모든 카드를 이 높이로 통일해
+    // 페이지마다 내용 높이가 달라지지 않게 한다. Build()에서 한 번만 잰다.
+    private float _uniformCardHeight;
     private readonly List<CanvasGroup> _cardGroups = new List<CanvasGroup>();
     // 카드별 페이드인은 각자 독립된 코루틴이라 _revealRoutine 하나만으로는 멈출 수 없다.
     // 여기 추적해뒀다가 카드를 다시 짓거나(RebuildCardsForCurrentPage) 보드를 닫을 때(Hide) 같이 멈춘다 —
@@ -380,6 +385,8 @@ public class QuestSelectionBoard : MonoBehaviour
         // 스케일 계산이 내용 높이를 읽어야 하므로 레이아웃을 먼저 확정해둔다.
         LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
 
+        MeasureUniformCardHeight();
+
         WarnIfNoEventSystem();
     }
 
@@ -416,13 +423,13 @@ public class QuestSelectionBoard : MonoBehaviour
 
     private void BuildHeader(Transform parent)
     {
-        Text title = CreateText(parent, "Header", 44, FontStyle.Bold, new Color(1f, 1f, 1f, 0.92f));
+        Text title = CreateText(parent, "Header", 34, FontStyle.Bold, new Color(1f, 1f, 1f, 0.92f));
         title.text = "돌연변이 길들이기 — 사례 선택";
         title.alignment = TextAnchor.MiddleLeft;
 
         var element = title.gameObject.AddComponent<LayoutElement>();
-        element.minHeight = 62f;
-        element.preferredHeight = 62f;
+        element.minHeight = 48f;
+        element.preferredHeight = 48f;
     }
 
     /// <summary>
@@ -436,12 +443,12 @@ public class QuestSelectionBoard : MonoBehaviour
         containerGo.transform.SetParent(parent, false);
         _cardsContainer = (RectTransform)containerGo.transform;
 
-        var layout = containerGo.AddComponent<VerticalLayoutGroup>();
-        layout.spacing = cardSpacing;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
+        _cardsLayout = containerGo.AddComponent<VerticalLayoutGroup>();
+        _cardsLayout.spacing = cardSpacing;
+        _cardsLayout.childControlWidth = true;
+        _cardsLayout.childControlHeight = true;
+        _cardsLayout.childForceExpandWidth = true;
+        _cardsLayout.childForceExpandHeight = false;
 
         var fitter = containerGo.AddComponent<ContentSizeFitter>();
         fitter.horizontalFit = ContentSizeFitter.FitMode.Unconstrained;
@@ -486,8 +493,88 @@ public class QuestSelectionBoard : MonoBehaviour
             }
         }
 
+        // 카드 높이를 알아야 빈 자리를 얼마나 비워둘지 정할 수 있으므로 먼저 한 번 재고,
+        // 자리를 잡아준 뒤 그 변화를 반영하러 한 번 더 잰다.
         LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
+        if (ReserveMissingCardSpace()) LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
         UpdatePagerState();
+    }
+
+    /// <summary>
+    /// 카탈로그의 모든 퀘스트로 카드를 한 번씩 만들어 보고, 그중 가장 큰 높이를 기억한다.
+    ///
+    /// 카드 높이는 줄거리 길이를 따라간다(사건 1은 세 줄, 사건 3은 다섯 줄). 그런데
+    /// fitToViewport는 내용 전체 높이로 스케일을 정하므로, 카드를 제 높이대로 두면
+    /// 페이지마다 보드 크기가 달라진다 — 짧은 페이지는 세로가 남아 <see cref="viewportWidthFraction"/>
+    /// 쪽에 먼저 걸리면서 가로로 더 커지고, 긴 페이지는 세로에 걸려 작아진다.
+    /// 한 페이지 안에서만 높이를 맞춰서는 페이지 사이의 이 차이를 없앨 수 없어서,
+    /// 카탈로그 전체 기준으로 한 번 재어 모든 카드를 같은 높이로 통일한다.
+    ///
+    /// 재는 동안 만든 카드는 곧바로 지운다. 보드는 이 시점에 아직 투명하거나(Awake 직후
+    /// SetVisibleImmediate(false)) 다음 줄에서 비활성화되므로 화면에 비치지 않는다.
+    /// </summary>
+    private void MeasureUniformCardHeight()
+    {
+        if (catalog == null || catalog.Count == 0) return;
+
+        _uniformCardHeight = 0f;
+
+        for (int i = 0; i < catalog.Count; i++)
+        {
+            QuestDefinition quest = catalog.Get(i);
+            if (quest != null) BuildCard(_cardsContainer, quest);
+        }
+
+        LayoutRebuilder.ForceRebuildLayoutImmediate(_content);
+
+        foreach (CanvasGroup card in _cardGroups)
+        {
+            float height = ((RectTransform)card.transform).rect.height;
+            if (height > _uniformCardHeight) _uniformCardHeight = height;
+        }
+
+        // Destroy는 이번 프레임 끝까지 계층에 남으므로, 뒤이어 진짜 카드를 만들 때
+        // 레이아웃에 끼어들지 않도록 비활성화까지 해둔다.
+        foreach (Transform child in _cardsContainer)
+        {
+            child.gameObject.SetActive(false);
+            Destroy(child.gameObject);
+        }
+        _cardGroups.Clear();
+    }
+
+    /// <summary>
+    /// 마지막 페이지에 카드가 한 장만 남았을 때, 빠진 카드가 차지했을 높이만큼을
+    /// 카드 영역 위아래에 빈 자리로 잡아둔다.
+    ///
+    /// fitToViewport는 내용 전체 높이로 스케일을 정한다. 그래서 이 자리를 비워두지 않으면
+    /// 카드가 한 장뿐인 페이지만 내용이 짧아져 보드가 혼자 커지고, 같은 글씨가 페이지마다
+    /// 다른 크기로 보인다. 위아래로 반씩 나눠 둬서 남은 카드는 카드 영역 한가운데에 오고,
+    /// 헤더와 페이지 이동줄도 페이지를 넘기는 내내 같은 자리에 머문다.
+    /// </summary>
+    /// <returns>빈 자리 크기가 실제로 바뀌어 레이아웃을 다시 재야 하면 true.</returns>
+    private bool ReserveMissingCardSpace()
+    {
+        if (_cardsLayout == null) return false;
+
+        int missing = EffectiveCardsPerPage - _cardGroups.Count;
+        float reserve = 0f;
+
+        if (missing > 0 && _cardGroups.Count > 0)
+        {
+            // 카드는 모두 _uniformCardHeight로 통일돼 있으므로, 빠진 자리도 같은 높이로 잡으면
+            // 이 페이지의 내용 높이가 카드가 꽉 찬 페이지와 정확히 같아진다.
+            float slot = Mathf.Max(cardMinHeight, _uniformCardHeight);
+            reserve = missing * (slot + cardSpacing);
+        }
+
+        int half = Mathf.RoundToInt(reserve * 0.5f);
+        RectOffset padding = _cardsLayout.padding;
+        if (padding != null && padding.top == half && padding.bottom == half) return false;
+
+        // RectOffset을 제자리에서 고치면 레이아웃이 바뀐 걸 알아채지 못한다. 새로 넣어야 dirty가 된다.
+        _cardsLayout.padding = new RectOffset(0, 0, half, half);
+        return true;
     }
 
     /// <summary>다음/이전 페이지로 이동. 이미 보이는 보드라면 새 카드만 짧게 페이드인한다.</summary>
@@ -540,11 +627,11 @@ public class QuestSelectionBoard : MonoBehaviour
         layout.childForceExpandHeight = true;
 
         _prevButton = BuildPagerButton(rowGo.transform, "◀ 이전", () => GoToPage(_currentPage - 1));
-        _pageLabel = CreateText(rowGo.transform, "PageLabel", 30, FontStyle.Bold,
+        _pageLabel = CreateText(rowGo.transform, "PageLabel", 24, FontStyle.Bold,
             new Color(bodyColor.r, bodyColor.g, bodyColor.b, 0.85f));
         _pageLabel.alignment = TextAnchor.MiddleCenter;
         var labelElement = _pageLabel.gameObject.AddComponent<LayoutElement>();
-        labelElement.preferredWidth = 140f;
+        labelElement.preferredWidth = 110f;
         _nextButton = BuildPagerButton(rowGo.transform, "다음 ▶", () => GoToPage(_currentPage + 1));
     }
 
@@ -554,7 +641,7 @@ public class QuestSelectionBoard : MonoBehaviour
         go.transform.SetParent(parent, false);
 
         var goElement = go.AddComponent<LayoutElement>();
-        goElement.preferredWidth = 180f;
+        goElement.preferredWidth = 140f;
 
         // 카드/뒤로가기 버튼과 같은 홀로그램 3겹(글로우 -> 패널 -> 외곽선) 톤을 맞춘다.
         CreateLayer(go.transform, "Glow", HoloSpriteFactory.Glow(), new Color(1f, 1f, 1f, 0.12f), 14f);
@@ -562,7 +649,7 @@ public class QuestSelectionBoard : MonoBehaviour
             raycastTarget: true);
         CreateLayer(go.transform, "Stroke", HoloSpriteFactory.Stroke(), new Color(1f, 1f, 1f, 0.5f), 0f);
 
-        Text text = CreateText(go.transform, "Label", 28, FontStyle.Bold, Color.white);
+        Text text = CreateText(go.transform, "Label", 22, FontStyle.Bold, Color.white);
         text.alignment = TextAnchor.MiddleCenter;
         var textRect = (RectTransform)text.transform;
         textRect.anchorMin = Vector2.zero;
@@ -603,9 +690,23 @@ public class QuestSelectionBoard : MonoBehaviour
         var cardGo = new GameObject($"Card_{quest.questId}", typeof(RectTransform));
         cardGo.transform.SetParent(parent, false);
 
+        // 카드 높이는 글이 정한다. 높이를 고정해두면 줄거리가 긴 퀘스트에서 글이 카드 밖으로 흘러넘친다.
+        // VerticalLayoutGroup이 자식 텍스트의 preferredHeight를 합쳐 카드 높이를 만들고,
+        // LayoutElement는 글이 짧을 때 카드가 납작해지지 않도록 최소 높이만 잡는다
+        // (preferredHeight는 -1로 남겨둬야 레이아웃 그룹이 계산한 높이가 쓰인다).
         var element = cardGo.AddComponent<LayoutElement>();
-        element.minHeight = cardHeight;
-        element.preferredHeight = cardHeight;
+        // _uniformCardHeight가 0인 건 아래 MeasureUniformCardHeight가 재는 중일 때뿐이다.
+        // 그때는 카드가 제 글 길이대로 자라야 진짜 높이를 잴 수 있다.
+        element.minHeight = Mathf.Max(cardMinHeight, _uniformCardHeight);
+
+        var layout = cardGo.AddComponent<VerticalLayoutGroup>();
+        layout.padding = new RectOffset(26, 104, 18, 18); // 오른쪽은 난이도 표시 자리로 비워둔다
+        layout.spacing = 6f;
+        layout.childControlWidth = true;
+        layout.childControlHeight = true;
+        layout.childForceExpandWidth = true;
+        layout.childForceExpandHeight = false;
+        layout.childAlignment = TextAnchor.MiddleLeft;
 
         var group = cardGo.AddComponent<CanvasGroup>();
         _cardGroups.Add(group);
@@ -639,36 +740,24 @@ public class QuestSelectionBoard : MonoBehaviour
         button.onClick.AddListener(() => HandleCardClicked(captured));
     }
 
+    /// <summary>
+    /// 카드 본문. 카드 자체가 VerticalLayoutGroup이므로 텍스트를 바로 자식으로 붙인다 —
+    /// 예전처럼 감싸는 RectTransform을 하나 두면 그게 카드에 anchor stretch로 붙어 카드 높이에
+    /// 묶이므로, 글이 아무리 길어져도 카드가 따라 자라지 못하고 글만 밖으로 넘친다.
+    /// </summary>
     private void BuildCardText(Transform parent, QuestDefinition quest)
     {
-        var textGo = new GameObject("Text", typeof(RectTransform));
-        textGo.transform.SetParent(parent, false);
-
-        var rect = (RectTransform)textGo.transform;
-        rect.anchorMin = Vector2.zero;
-        rect.anchorMax = Vector2.one;
-        rect.offsetMin = new Vector2(30f, 22f);
-        rect.offsetMax = new Vector2(-130f, -20f); // 오른쪽은 난이도 표시 자리로 비워둔다
-
-        var layout = textGo.AddComponent<VerticalLayoutGroup>();
-        layout.spacing = 8f;
-        layout.childControlWidth = true;
-        layout.childControlHeight = true;
-        layout.childForceExpandWidth = true;
-        layout.childForceExpandHeight = false;
-        layout.childAlignment = TextAnchor.MiddleLeft;
-
-        Text title = CreateText(textGo.transform, "Title", 42, FontStyle.Bold, Color.white);
+        Text title = CreateText(parent, "Title", 32, FontStyle.Bold, Color.white);
         title.text = $"{quest.gene} {quest.mutation}";
 
-        Text subtitle = CreateText(textGo.transform, "Subtitle", 28, FontStyle.Normal,
+        Text subtitle = CreateText(parent, "Subtitle", 22, FontStyle.Normal,
             new Color(quest.accent.r, quest.accent.g, quest.accent.b, 0.95f));
         subtitle.text = quest.subtitle;
 
-        Text summary = CreateText(textGo.transform, "Summary", 25, FontStyle.Normal,
+        Text summary = CreateText(parent, "Summary", 20, FontStyle.Normal,
             new Color(bodyColor.r, bodyColor.g, bodyColor.b, 0.82f));
         summary.text = quest.summary;
-        summary.lineSpacing = 1.25f;
+        summary.lineSpacing = 1.15f;
     }
 
     private void BuildDifficulty(Transform parent, QuestDefinition quest)
@@ -676,15 +765,18 @@ public class QuestSelectionBoard : MonoBehaviour
         var rowGo = new GameObject("Difficulty", typeof(RectTransform));
         rowGo.transform.SetParent(parent, false);
 
+        // 카드 오른쪽에 겹쳐 놓는 표시라 카드의 세로 레이아웃에는 끼지 않는다.
+        rowGo.AddComponent<LayoutElement>().ignoreLayout = true;
+
         var rect = (RectTransform)rowGo.transform;
         rect.anchorMin = new Vector2(1f, 0.5f);
         rect.anchorMax = new Vector2(1f, 0.5f);
         rect.pivot = new Vector2(1f, 0.5f);
-        rect.anchoredPosition = new Vector2(-30f, 0f);
-        rect.sizeDelta = new Vector2(96f, 24f);
+        rect.anchoredPosition = new Vector2(-24f, 0f);
+        rect.sizeDelta = new Vector2(80f, 20f);
 
         var layout = rowGo.AddComponent<HorizontalLayoutGroup>();
-        layout.spacing = 7f;
+        layout.spacing = 6f;
         layout.childAlignment = TextAnchor.MiddleRight;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -703,8 +795,8 @@ public class QuestSelectionBoard : MonoBehaviour
             dot.color = i < quest.difficulty ? quest.accent : new Color(1f, 1f, 1f, 0.18f);
 
             var element = dotGo.AddComponent<LayoutElement>();
-            element.preferredWidth = 14f;
-            element.preferredHeight = 14f;
+            element.preferredWidth = 11f;
+            element.preferredHeight = 11f;
         }
     }
 
@@ -739,6 +831,10 @@ public class QuestSelectionBoard : MonoBehaviour
         image.type = Image.Type.Sliced;
         image.color = color;
         image.raycastTarget = raycastTarget;
+
+        // 이 레이어는 부모 전체를 덮는 배경이다. 부모가 레이아웃 그룹이면(카드)
+        // 그룹이 이걸 내용 한 칸으로 세워 배치해버리므로 레이아웃에서 빼둔다.
+        go.AddComponent<LayoutElement>().ignoreLayout = true;
 
         return image;
     }
