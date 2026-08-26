@@ -44,6 +44,23 @@ def fetch_alphafold(uniprot_id: str, out_dir: str = "structures") -> tuple[str, 
     return path, meta
 
 
+def fetch_rcsb(pdb_id: str, out_dir: str = "structures") -> str:
+    """AlphaFold 예측이 아니라 RCSB에 등록된 실제(실험) 구조를 그대로 받는다.
+    예: 8EJ1/8EIQ 같은 cryo-EM CFTR 구조 — AlphaFold는 리간드 결합/구조 교정 상태를
+    예측하지 못하므로, 이런 상태를 표현하려면 실제 결정/cryo-EM 구조가 필요하다."""
+    os.makedirs(out_dir, exist_ok=True)
+
+    print(f"[1/4] RCSB 구조 파일 다운로드: {pdb_id}")
+    resp = requests.get(f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=60)
+    resp.raise_for_status()
+
+    path = os.path.join(out_dir, f"{pdb_id}.pdb")
+    with open(path, "w") as f:
+        f.write(resp.text)
+    print(f"      -> 저장됨: {path} ({len(resp.text)} bytes)")
+    return path
+
+
 def pdb_to_layered_json(pdb_path: str, out_json_path: str,
                          residue_range: tuple[int, int] | None = None,
                          mutation_sites: tuple[int, ...] = ()) -> None:
@@ -107,15 +124,29 @@ CONFIGS = {
     "P00519": {"range": (242, 506), "mutations": (315,)},      # ABL1: T315I gatekeeper (키나아제 도메인)
 }
 
+# RCSB에 등록된 실제 구조(실험 구조, UniProt/AlphaFold 아님) 전처리 설정.
+# 8EJ1은 F508del CFTR(미교정) cryo-EM 구조라 508번 자리가 결실(deletion)로 아예 비어 있다 —
+# 그래서 508 대신 그 자리를 감싸는 507/509를 변이 표시 잔기로 쓴다.
+# range는 F508이 속한 NBD1 도메인 위주로 좁혀 원자 수를 다른 퀘스트와 비슷한 규모로 유지한다.
+RCSB_CONFIGS = {
+    "8EJ1": {"range": (370, 680), "mutations": (507, 509)},  # CFTR F508del, 교정 전(미접힘) 상태
+}
+
 if __name__ == "__main__":
     import sys
-    UNIPROT_ID = sys.argv[1] if len(sys.argv) > 1 else "P00533"
-    cfg = CONFIGS.get(UNIPROT_ID, {"range": None, "mutations": ()})
+    ID = sys.argv[1] if len(sys.argv) > 1 else "P00533"
+
     try:
-        pdb_path, meta = fetch_alphafold(UNIPROT_ID)
+        if ID in RCSB_CONFIGS:
+            cfg = RCSB_CONFIGS[ID]
+            pdb_path = fetch_rcsb(ID)
+        else:
+            cfg = CONFIGS.get(ID, {"range": None, "mutations": ()})
+            pdb_path, _meta = fetch_alphafold(ID)
+
         pdb_to_layered_json(
             pdb_path,
-            f"Assets/StreamingAssets/structures/{UNIPROT_ID}.json",
+            f"Assets/StreamingAssets/structures/{ID}.json",
             residue_range=cfg["range"],
             mutation_sites=tuple(cfg["mutations"]),
         )

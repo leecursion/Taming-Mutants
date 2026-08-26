@@ -1,0 +1,15 @@
+{
+  "id": "cftr_f508del",
+  "title": "CFTR F508del 후보물질 도킹 — Corrector + Potentiator",
+  "protein_json": "structures/8EJ1.json",
+  "target_residue_id": 509,
+  "target_atom_name": "",
+  "pocket_residue_ids": [495, 500, 505, 507, 509, 513, 518, 525, 530],
+  "compounds_folder": "compounds/cftr_f508del",
+  "compound_files": ["corrector_pair.json", "ivacaftor_like.json", "lumacaftor_like.json", "proteasome_inhibitor_like.json", "kras_g12c_inhibitor_like.json"],
+  "entrance_offset": 0.85,
+  "helix_regions": [
+    {"label": "NBD1 F508 인접 루프", "start_res_id": 495, "end_res_id": 520},
+    {"label": "NBD1 안정화 Helix", "start_res_id": 525, "end_res_id": 545}
+  ]
+}

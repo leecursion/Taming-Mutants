@@ -1,0 +1,14 @@
+{
+  "id": "p53_y220c",
+  "title": "p53 Y220C 열안정성 도킹 — Mutant-Selective Stabilizer",
+  "protein_json": "structures/P53_Y220C_9S9O.json",
+  "target_residue_id": 220,
+  "target_atom_name": "SG",
+  "pocket_residue_ids": [145, 151, 154, 220, 223, 229, 257],
+  "compounds_folder": "compounds/p53_y220c",
+  "compound_files": ["p53_fragment.json", "p53_stabilizer.json", "p53_mdm2.json", "p53_warhead.json", "p53_nonselective.json"],
+  "entrance_offset": 0.8,
+  "helix_regions": [
+    {"label": "DNA-contact Helix (H2)", "start_res_id": 278, "end_res_id": 289}
+  ]
+}

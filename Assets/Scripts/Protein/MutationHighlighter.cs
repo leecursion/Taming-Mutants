@@ -56,17 +56,36 @@ public class MutationHighlighter : MonoBehaviour
         if (site == null) return;
 
         // 재선택 여부를 사용자가 바로 알 수 있도록 해당 잔기 원자들을 짧게 섬광시킨다
-        if (_atomsByResidue.TryGetValue(residueId, out var atoms))
-        {
-            foreach (var atomInfo in atoms)
-            {
-                if (atomInfo == null) continue;
-                var pulse = atomInfo.GetComponent<PulseHighlight>();
-                if (pulse != null) pulse.Flash();
-            }
-        }
+        FlashResidue(residueId);
 
         OnMutationSelected?.Invoke(site);
+    }
+
+    /// <summary>
+    /// 선택 이벤트 없이 시각 피드백만 준다.
+    ///
+    /// 도입 시나리오처럼 비서가 "여기가 문제야" 하고 짚어 보이는 연출에 쓴다.
+    /// <see cref="SelectResidue"/>를 대신 부르면 OnMutationSelected가 발생하고,
+    /// 비서가 그걸 사용자의 선택으로 받아 SayNow로 설명을 끼워 넣으면서
+    /// 재생 중이던 시나리오 대사 큐를 통째로 날려버린다.
+    /// </summary>
+    public void FlashResidue(int residueId)
+    {
+        if (!_atomsByResidue.TryGetValue(residueId, out var atoms)) return;
+
+        foreach (var atomInfo in atoms)
+        {
+            if (atomInfo == null) continue;
+            var pulse = atomInfo.GetComponent<PulseHighlight>();
+            if (pulse != null) pulse.Flash();
+        }
+    }
+
+    /// <summary>등록된 모든 변이 부위를 한꺼번에 반짝인다. 선택 이벤트는 발생하지 않는다.</summary>
+    public void FlashAllSites()
+    {
+        foreach (var site in mutationSites)
+            if (site != null) FlashResidue(site.residueId);
     }
 }
 

@@ -68,6 +68,15 @@ public class AIAssistantFollower : MonoBehaviour
     public float swayAmplitude = 0.02f;
     public float swayFrequency = 0.33f;
 
+    [Header("일시적 오버라이드 (예: p53 열안정성 카메라 클로즈업)")]
+    [Tooltip("켜져 있는 동안은 anchorTarget(분자) 옆 배치 대신 사용자(카메라) 옆 배치로 전환한다. " +
+             "카메라가 분자 전체가 아니라 좁은 부위로 확 당겨지면 ScreenSpace 배치가 분자의 화면 " +
+             "투영 자체를 잘못 재서 깨지기 때문이다. ThermalStabilityController처럼 클로즈업 연출을 " +
+             "트는 쪽이 SetCloseUpOverride()로 켜고 끈다.")]
+    public bool closeUpOverrideActive;
+    [Tooltip("오버라이드 중 사용할 사용자 기준 오프셋 (localOffset과 같은 축 규칙: x=오른쪽, y=위, z=앞)")]
+    public Vector3 closeUpLocalOffset = new Vector3(0.4f, 0.15f, 0.7f);
+
     [Header("바라보기")]
     [Tooltip("켜면 항상 사용자를 향한다. 끄면 사용자와 같은 방향을 본다.")]
     public bool faceUser = true;
@@ -146,9 +155,15 @@ public class AIAssistantFollower : MonoBehaviour
 
     private Vector3 ComputeAnchor()
     {
+        if (closeUpOverrideActive) return ComputeUserRelativeAnchor(closeUpLocalOffset);
         if (anchorTarget != null) return ComputeAnchorBesideTarget();
 
-        if (!yawOnly) return followTarget.TransformPoint(localOffset);
+        return ComputeUserRelativeAnchor(localOffset);
+    }
+
+    private Vector3 ComputeUserRelativeAnchor(Vector3 offset)
+    {
+        if (!yawOnly) return followTarget.TransformPoint(offset);
 
         Vector3 flatForward = followTarget.forward;
         flatForward.y = 0f;
@@ -161,7 +176,7 @@ public class AIAssistantFollower : MonoBehaviour
         if (flatForward.sqrMagnitude < 1e-4f) flatForward = Vector3.forward;
 
         Quaternion basis = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
-        return followTarget.position + basis * localOffset;
+        return followTarget.position + basis * offset;
     }
 
     /// <summary>
@@ -507,6 +522,17 @@ public class AIAssistantFollower : MonoBehaviour
     {
         _focusTarget = pointOfInterest;
         _focusUntil = Time.time + duration;
+    }
+
+    /// <summary>
+    /// ThermalStabilityController처럼 카메라를 분자의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
+    /// 연출 시작/종료에 맞춰 호출한다. true면 anchorTarget 옆 배치를 잠시 멈추고 사용자 옆으로
+    /// 옮기며, false면 원래 배치로 되돌린다. 실제 이동은 기존 lazy-follow(SmoothDamp)를 그대로
+    /// 타므로 순간이동 없이 부드럽게 전환된다.
+    /// </summary>
+    public void SetCloseUpOverride(bool active)
+    {
+        closeUpOverrideActive = active;
     }
 
     private void OnDrawGizmosSelected()

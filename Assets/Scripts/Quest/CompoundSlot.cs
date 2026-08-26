@@ -93,14 +93,17 @@ public class CompoundSlot : MonoBehaviour
 
         var glowGo = new GameObject("FloorGlow");
         glowGo.transform.SetParent(transform, false);
-        glowGo.transform.localPosition = new Vector3(0f, -size * 0.5f, 0f);
+        glowGo.transform.localPosition = new Vector3(0f, -size * 0.52f, 0f);
         glowGo.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f); // 바닥에 눕혀 위를 보게
 
         _floorGlow = glowGo.AddComponent<SpriteRenderer>();
         _floorGlow.sprite = HoloSpriteFactory.Glow();
 
+        // 예전엔 1.5×size라 반지름이 박스 절반(0.5×size)보다 커서 앞쪽 가장자리(이름표가 있는
+        // 자리)까지 번져, 텍스트가 이 글로우 뒤에 가려 보이는 문제가 있었다. 박스 발밑 정도로만
+        // 좁혀 이름표 자리를 침범하지 않게 한다.
         float nativeSize = Mathf.Max(_floorGlow.sprite.bounds.size.x, 0.0001f);
-        float desiredDiameter = size * 1.5f;
+        float desiredDiameter = size * 0.75f;
         glowGo.transform.localScale = Vector3.one * (desiredDiameter / nativeSize);
     }
 }
