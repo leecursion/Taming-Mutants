@@ -32,4 +32,35 @@ public static class RuntimeMaterials
         var renderer = go.GetComponent<Renderer>();
         if (renderer != null) renderer.sharedMaterial = Solid;
     }
+
+    private static Material _transparent;
+
+    /// <summary>MPB의 _BaseColor 알파로 투명도를 조절할 수 있는 URP Lit 변형.
+    /// ThermalStabilityController(p53 wobble)와 ProteinLoader.Fade*(CFTR 구조 전환 페이드)가 같이 쓴다.</summary>
+    public static Material Transparent
+    {
+        get
+        {
+            if (_transparent == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null)
+                {
+                    _transparent = new Material(shader) { name = "RuntimeTransparent" };
+                    _transparent.SetFloat("_Surface", 1f); // 0 = Opaque, 1 = Transparent
+                    _transparent.SetFloat("_Blend", 0f);   // 0 = Alpha
+                    _transparent.SetOverrideTag("RenderType", "Transparent");
+                    _transparent.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    _transparent.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    _transparent.SetInt("_ZWrite", 0);
+                    _transparent.DisableKeyword("_ALPHATEST_ON");
+                    _transparent.EnableKeyword("_ALPHABLEND_ON");
+                    _transparent.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    _transparent.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                    _transparent.EnableKeyword("_EMISSION");
+                }
+            }
+            return _transparent;
+        }
+    }
 }

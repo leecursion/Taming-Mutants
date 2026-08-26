@@ -189,6 +189,11 @@ public class StructureLevelController : MonoBehaviour
 
         for (int i = 0; i < trace.Count - 1; i++)
         {
+            // res_id가 실제로 연속(+1)일 때만 잇는다 — 구조에 없는 잔기(cryo-EM에서 못 잡은 loop,
+            // F508del처럼 아예 결실된 자리, CFTR처럼 서열상 멀리 떨어진 두 구간(NBD1/ICL4)만
+            // 골라 담은 경우)가 있으면 리본이 그 빈 구간을 가로질러 일직선으로 이어져 버린다.
+            if (trace[i + 1].Key != trace[i].Key + 1) continue;
+
             Color segColor = ColorForSecondaryStructure(secondaryStructure[i]);
 
             GameObject seg = CreateSegment(trace[i].Value, trace[i + 1].Value, _ribbonRoot, ribbonRadius);
@@ -234,6 +239,10 @@ public class StructureLevelController : MonoBehaviour
 
             for (int i = 0; i < subset.Count - 1; i++)
             {
+                // 리본과 같은 이유 — 예: CFTR "NBD1 F508 인접 루프"(495-520)는 507→509 사이의
+                // F508 결실 자리를 품고 있어, 연속성 체크 없이 이으면 그 빈자리를 가로지르는 직선이 생긴다.
+                if (subset[i + 1].Key != subset[i].Key + 1) continue;
+
                 GameObject seg = CreateSegment(subset[i].Value, subset[i + 1].Value, regionGo.transform, helixRadius);
                 TintSegment(seg, helixColor);
                 var info = seg.AddComponent<HelixSegmentInfo>();

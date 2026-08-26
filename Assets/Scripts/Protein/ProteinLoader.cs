@@ -265,6 +265,52 @@ public class ProteinLoader : MonoBehaviour
     }
 
     /// <summary>
+    /// 현재 스폰된 원자/결합 전체를 알파 페이드시킨다 (예: CFTR corrector 성공 시
+    /// 8EJ1→8EIQ 구조 스왑을 "뚝 끊기지 않게" 보여주는 연출). ThermalStabilityController의
+    /// 알파 처리와 같은 MaterialPropertyBlock 기법을 RuntimeMaterials.Transparent로 공유한다.
+    /// LoadStructure를 부르는 쪽(예: CftrRescueController)이
+    /// FadeOutRoutine → LoadStructure → (OnLoaded 후) FadeInRoutine 순으로 조합해서 쓴다.
+    /// </summary>
+    public IEnumerator FadeOutRoutine(float duration) { yield return FadeAllRoutine(1f, 0f, duration); }
+    public IEnumerator FadeInRoutine(float duration) { yield return FadeAllRoutine(0f, 1f, duration); }
+    public void FadeIn(float duration) { StartCoroutine(FadeInRoutine(duration)); }
+
+    private IEnumerator FadeAllRoutine(float from, float to, float duration)
+    {
+        var renderers = new List<Renderer>();
+        foreach (var g in _spawnedAtoms) { if (!g) continue; var r = g.GetComponent<Renderer>(); if (r) renderers.Add(r); }
+        foreach (var g in _spawnedBonds) { if (!g) continue; var r = g.GetComponent<Renderer>(); if (r) renderers.Add(r); }
+        if (renderers.Count == 0) yield break;
+
+        foreach (var r in renderers) r.sharedMaterial = RuntimeMaterials.Transparent;
+
+        var mpb = new MaterialPropertyBlock();
+        void ApplyAlpha(float alpha)
+        {
+            foreach (var r in renderers)
+            {
+                if (!r) continue;
+                r.GetPropertyBlock(mpb);
+                Color c = mpb.GetColor("_BaseColor");
+                if (c.a <= 0f) c = new Color(0.75f, 0.78f, 0.82f, 1f); // 색이 안 잡혀 있으면 은은한 회색
+                c.a = alpha;
+                mpb.SetColor("_BaseColor", c);
+                r.SetPropertyBlock(mpb);
+            }
+        }
+
+        ApplyAlpha(from);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            ApplyAlpha(Mathf.Lerp(from, to, Mathf.Clamp01(elapsed / duration)));
+            yield return null;
+        }
+        ApplyAlpha(to);
+    }
+
+    /// <summary>
     /// 지정한 잔기(res_id) 집합에 속한 원자만 표시한다 (아미노산 단계의 부분 표시용).
     /// null이면 전체 표시.
     /// 결합이 하나도 없이 홀로 남는 원자(퀘스트 범위 필터 경계에서 결합 상대가 잘려나간 경우)는

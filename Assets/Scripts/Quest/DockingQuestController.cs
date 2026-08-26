@@ -32,6 +32,10 @@ public class DockingQuestController : MonoBehaviour
     public ThermalStabilityController thermal;
     [Tooltip("위와 같은 조건 — 결과별 p53 총량/DNA 결합능/독성 경고 HUD를 갱신한다.")]
     public ThermalStabilityHUD hud;
+    [Tooltip("CFTR F508del(사건 4) corrector/potentiator 퀘스트에서만 쓰인다. 있으면 화합물별 " +
+             "성공/실패/순서오류 결과를 넘겨줘 8EJ1→8EIQ 구조 스왑, wobble 완화, gate/Cl- 연출, " +
+             "HUD(Surface CFTR/Channel activity) 갱신을 맡긴다. 비우면 무시된다.")]
+    public CftrRescueController cftr;
 
     [Header("타깃 부위 (res_id는 로드된 구조 JSON 기준 — QuestCatalog 사용 시 퀘스트 JSON이 덮어씀)")]
     [Tooltip("공유결합 대상 잔기 — KRAS G12C의 Cys12")]
@@ -106,6 +110,7 @@ public class DockingQuestController : MonoBehaviour
         // 열안정성 퀘스트가 아닌 씬에는 이 둘이 아예 없을 수 있다 — 못 찾아도 조용히 null로 둔다.
         if (thermal == null) thermal = FindFirstObjectByType<ThermalStabilityController>(FindObjectsInactive.Include);
         if (hud == null) hud = FindFirstObjectByType<ThermalStabilityHUD>(FindObjectsInactive.Include);
+        if (cftr == null) cftr = FindFirstObjectByType<CftrRescueController>(FindObjectsInactive.Include);
     }
 
     private void OnEnable()
@@ -290,7 +295,7 @@ public class DockingQuestController : MonoBehaviour
                 // 포켓엔 들어가 잠깐 안정화 효과가 보이지만, 오래 붙어있지 못하고 이탈한다.
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
-                if (hud != null) hud.SetStability(0.35f, "LOW (fragment)");
+                if (hud != null) hud.SetStability(0.35f, "낮음 (잠깐 붙었다 떨어짐)");
                 yield return new WaitForSeconds(0.8f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.1f, 0.6f, spin: true);
                 FinishFailure(slot, clone, noWarheadColor, outcome);
@@ -322,7 +327,7 @@ public class DockingQuestController : MonoBehaviour
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 StartCoroutine(BurstEffect(pocketCenter + Vector3.up * 0.6f, failColor, 0.28f, 0.5f));
                 StartCoroutine(BurstEffect(pocketCenter - proteinLoader.transform.right * 0.8f, failColor, 0.28f, 0.5f));
-                if (hud != null) hud.ShowWarning("Non-selective binding detected — toxicity risk");
+                if (hud != null) hud.ShowWarning("표적이 아닌 곳에도 마구 붙었어요 — 부작용 위험");
                 yield return Shake(clone.transform, 0.4f, 0.02f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 0.9f, 0.4f, spin: true);
                 FinishFailure(slot, clone, failColor, outcome);
@@ -371,6 +376,7 @@ public class DockingQuestController : MonoBehaviour
         if (hud != null) hud.SetDnaBindingCompetent(true);
 
         _succeededCompoundIds.Add(slot.Data.id);
+        if (cftr != null) cftr.HandleCompoundSuccess(slot.Data.id);
 
         // completes_stage가 false인 화합물(예: CFTR corrector)은 그 자체로는 충분하지 않다 —
         // 단계를 끝내지 않고 패널을 다시 열어, 뒤이어 필요한 화합물(potentiator 등)을 고를 수 있게 한다.
@@ -408,6 +414,7 @@ public class DockingQuestController : MonoBehaviour
             messageOverride: slot.Data.order_error_message,
             affinityOverride: "먼저 다른 후보물질이 필요해");
         selectionPanel.Interactable = true;
+        if (cftr != null) cftr.HandleOrderError(slot.Data.id);
 
         OnDockingFinished?.Invoke(DockingOutcome.NoWarhead, slot.Data);
     }
@@ -421,6 +428,7 @@ public class DockingQuestController : MonoBehaviour
         slot.SetResultColor(color);
         selectionPanel.ShowResult(slot.Data, color);
         selectionPanel.Interactable = true; // 재도전 허용
+        if (cftr != null) cftr.HandleCompoundFailure(slot.Data.id, outcome);
         OnDockingFinished?.Invoke(outcome, slot.Data);
     }
 

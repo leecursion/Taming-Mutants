@@ -2,37 +2,30 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// p53 Y220C 열안정성 퀘스트 전용 HUD. 화면 좌상단에 고정된 홀로그램 패널로
-/// 온도·안정성(Stability)·흔들림(Wobble)·p53 총량·DNA 결합능·독성/선택성 경고,
-/// 그리고 설계서에 적힌 "HUD:" 문구를 그대로 띄우는 메시지 줄을 보여준다.
+/// 사건 4(CFTR F508del) 전용 HUD. 화면 좌상단에 고정된 홀로그램 패널로
+/// Surface CFTR(세포막 도달량)·Channel activity(채널 활성)·ER stress 경고, 그리고
+/// 설계서의 "HUD:" 문구를 그대로 띄우는 메시지 줄을 보여준다.
 ///
-/// 다른 퀘스트의 진행률 패널(QuestManagerSpatialUI)과는 별개다 — 이 지표들은
-/// 도킹 성공/실패가 아니라 "지금 단백질이 얼마나 안정적인가"를 보여주는,
-/// 이 퀘스트에만 있는 관측 장비 화면이라는 컨셉이라 분리했다.
+/// ThermalStabilityHUD(p53)와 같은 자리 — 코드로 전부 조립하는 같은 기법을 그대로 따른다.
 /// </summary>
-public class ThermalStabilityHUD : MonoBehaviour
+public class CftrHUD : MonoBehaviour
 {
     [Header("표시")]
     public Vector2 cornerMargin = new Vector2(28f, 28f);
     public float panelWidth = 380f;
 
     [Header("홀로그램 톤")]
-    public Color accentColor = new Color(0.35f, 0.85f, 1f);
+    public Color accentColor = new Color(0.3f, 0.9f, 0.65f);
     public Color panelColor = new Color(0.02f, 0.06f, 0.10f, 0.94f);
     public Color textColor = new Color(0.85f, 0.95f, 1f);
     public Color warningColor = new Color(1f, 0.35f, 0.2f);
     public Color goodColor = new Color(0.35f, 1f, 0.55f);
     public Color badColor = new Color(1f, 0.55f, 0.2f);
 
-    private Canvas _canvas;
-    private Text _tempText;
-    private Image _stabilityFill;
-    private Text _stabilityLabel;
-    private Image _wobbleFill;
-    private Text _wobbleLabel;
-    private Image _p53Fill;
-    private Image _dnaDot;
-    private Text _dnaLabel;
+    private Text _surfaceLabel;
+    private Image _surfaceFill;
+    private Text _channelLabel;
+    private Image _channelFill;
     private GameObject _warningRow;
     private Text _warningText;
     private Text _messageText;
@@ -40,56 +33,38 @@ public class ThermalStabilityHUD : MonoBehaviour
     private void Awake()
     {
         BuildUI();
-        SetStability(0f, "낮음");
-        SetWobble(0f, "측정 전");
-        SetP53Quantity(0f);
-        SetDnaBindingCompetent(false);
+        SetSurfaceCftr(0f, "매우 적음");
+        SetChannelActivity(0f, "측정 전");
         HideWarning();
         ShowMessage(string.Empty);
 
-        // 사건 5(p53)를 시작하기 전까지는 보이면 안 된다 — ThermalStabilityController가
-        // EnterThermalStage()에서 명시적으로 다시 켠다.
+        // 사건 4를 시작하기 전까지는 보이면 안 된다 — CftrRescueController가
+        // 아미노산 레벨(Level 2) 진입 시 명시적으로 다시 켠다.
         gameObject.SetActive(false);
     }
 
     // --- 외부 API ---
 
-    public void SetTemperature(float celsius)
-    {
-        if (_tempText != null) _tempText.text = $"온도: {celsius:0}°C";
-    }
-
-    public void SetStability(float value01, string label)
+    public void SetSurfaceCftr(float value01, string label)
     {
         value01 = Mathf.Clamp01(value01);
-        if (_stabilityFill != null)
+        if (_surfaceFill != null)
         {
-            _stabilityFill.fillAmount = value01;
-            _stabilityFill.color = Color.Lerp(badColor, goodColor, value01);
+            _surfaceFill.fillAmount = value01;
+            _surfaceFill.color = Color.Lerp(badColor, goodColor, value01);
         }
-        if (_stabilityLabel != null) _stabilityLabel.text = $"안정성: {label}";
+        if (_surfaceLabel != null) _surfaceLabel.text = $"세포 표면의 CFTR 양: {label}";
     }
 
-    public void SetWobble(float value01, string label)
+    public void SetChannelActivity(float value01, string label)
     {
         value01 = Mathf.Clamp01(value01);
-        if (_wobbleFill != null)
+        if (_channelFill != null)
         {
-            _wobbleFill.fillAmount = value01;
-            _wobbleFill.color = Color.Lerp(goodColor, badColor, value01); // 높을수록(많이 흔들릴수록) 나쁜색
+            _channelFill.fillAmount = value01;
+            _channelFill.color = Color.Lerp(badColor, goodColor, value01);
         }
-        if (_wobbleLabel != null) _wobbleLabel.text = $"흔들림: {label}";
-    }
-
-    public void SetP53Quantity(float value01)
-    {
-        if (_p53Fill != null) _p53Fill.fillAmount = Mathf.Clamp01(value01);
-    }
-
-    public void SetDnaBindingCompetent(bool competent)
-    {
-        if (_dnaDot != null) _dnaDot.color = competent ? goodColor : new Color(1f, 1f, 1f, 0.25f);
-        if (_dnaLabel != null) _dnaLabel.text = competent ? "DNA 결합: 가능" : "DNA 결합: 불가능";
+        if (_channelLabel != null) _channelLabel.text = $"채널이 열리는 정도: {label}";
     }
 
     public void ShowWarning(string text)
@@ -109,20 +84,20 @@ public class ThermalStabilityHUD : MonoBehaviour
         if (_messageText != null) _messageText.text = text;
     }
 
-    // --- 조립 ---
+    // --- 조립 (ThermalStabilityHUD.BuildUI와 같은 기법) ---
 
     private void BuildUI()
     {
-        var canvasGo = new GameObject("ThermalHudCanvas");
+        var canvasGo = new GameObject("CftrHudCanvas");
         canvasGo.transform.SetParent(transform, false);
-        _canvas = canvasGo.AddComponent<Canvas>();
-        _canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        _canvas.sortingOrder = 40;
+        var canvas = canvasGo.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 40;
         var scaler = canvasGo.AddComponent<CanvasScaler>();
         scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
         scaler.referenceResolution = new Vector2(1920f, 1080f);
 
-        var rootGo = new GameObject("ThermalHud", typeof(RectTransform));
+        var rootGo = new GameObject("CftrHud", typeof(RectTransform));
         rootGo.transform.SetParent(canvasGo.transform, false);
         var rootRect = (RectTransform)rootGo.transform;
         rootRect.anchorMin = rootRect.anchorMax = new Vector2(0f, 1f); // 좌상단
@@ -149,43 +124,13 @@ public class ThermalStabilityHUD : MonoBehaviour
 
         Text title = CreateText(rootGo.transform, "Title", 22, FontStyle.Bold,
             new Color(accentColor.r, accentColor.g, accentColor.b, 0.95f));
-        title.text = "온도와 안정성 화면";
+        title.text = "CFTR 상태 화면";
 
-        _tempText = CreateText(rootGo.transform, "Temp", 20, FontStyle.Normal, textColor);
+        _surfaceLabel = CreateText(rootGo.transform, "SurfaceLabel", 18, FontStyle.Normal, textColor);
+        _surfaceFill = CreateBar(rootGo.transform, "SurfaceBar");
 
-        _stabilityLabel = CreateText(rootGo.transform, "StabilityLabel", 18, FontStyle.Normal, textColor);
-        _stabilityFill = CreateBar(rootGo.transform, "StabilityBar");
-
-        _wobbleLabel = CreateText(rootGo.transform, "WobbleLabel", 18, FontStyle.Normal, textColor);
-        _wobbleFill = CreateBar(rootGo.transform, "WobbleBar");
-
-        var p53Row = new GameObject("P53Row", typeof(RectTransform));
-        p53Row.transform.SetParent(rootGo.transform, false);
-        var p53Layout = p53Row.AddComponent<HorizontalLayoutGroup>();
-        p53Layout.spacing = 10f;
-        p53Layout.childAlignment = TextAnchor.MiddleLeft;
-        p53Layout.childControlWidth = true;
-        p53Layout.childControlHeight = true;
-        Text p53Label = CreateText(p53Row.transform, "P53Label", 18, FontStyle.Normal, textColor);
-        p53Label.text = "p53 단백질 양";
-        var p53LabelElement = p53Label.gameObject.AddComponent<LayoutElement>();
-        p53LabelElement.preferredWidth = 150f;
-        _p53Fill = CreateBar(p53Row.transform, "P53Bar");
-
-        var dnaRow = new GameObject("DnaRow", typeof(RectTransform));
-        dnaRow.transform.SetParent(rootGo.transform, false);
-        var dnaLayout = dnaRow.AddComponent<HorizontalLayoutGroup>();
-        dnaLayout.spacing = 8f;
-        dnaLayout.childAlignment = TextAnchor.MiddleLeft;
-        dnaLayout.childControlWidth = false;
-        dnaLayout.childControlHeight = true;
-        var dnaDotGo = new GameObject("Dot", typeof(RectTransform));
-        dnaDotGo.transform.SetParent(dnaRow.transform, false);
-        _dnaDot = dnaDotGo.AddComponent<Image>();
-        _dnaDot.sprite = HoloSpriteFactory.Circle();
-        var dnaDotElement = dnaDotGo.AddComponent<LayoutElement>();
-        dnaDotElement.preferredWidth = dnaDotElement.preferredHeight = 14f;
-        _dnaLabel = CreateText(dnaRow.transform, "DnaLabel", 18, FontStyle.Normal, textColor);
+        _channelLabel = CreateText(rootGo.transform, "ChannelLabel", 18, FontStyle.Normal, textColor);
+        _channelFill = CreateBar(rootGo.transform, "ChannelBar");
 
         _warningRow = new GameObject("Warning", typeof(RectTransform));
         _warningRow.transform.SetParent(rootGo.transform, false);
