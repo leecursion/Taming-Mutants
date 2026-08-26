@@ -393,6 +393,8 @@ MonoBehaviour:
   levelController: {fileID: 2104595270}
   questCatalog: {fileID: 2088257798}
   activeForQuestId: p53_y220c
+  selectionPanel: {fileID: 0}
+  assistantFollower: {fileID: 0}
   mutationResidueId: 220
   hud: {fileID: 1031945657}
   targetCamera: {fileID: 330585545}
@@ -1188,6 +1190,8 @@ MonoBehaviour:
   pullTowardCamera: 1.9
   topOffset: -2
   diagonalYaw: 18
+  zoomOverrideActive: 0
+  zoomOverridePanelScale: 1.1
   levelController: {fileID: 0}
   labelFont: {fileID: 0}
   labelColor: {r: 0, g: 0, b: 0, a: 1}
@@ -1303,6 +1307,8 @@ GameObject:
   - component: {fileID: 733304432}
   - component: {fileID: 733304431}
   - component: {fileID: 733304430}
+  - component: {fileID: 733304435}
+  - component: {fileID: 733304434}
   m_Layer: 0
   m_Name: GameFlow
   m_TagString: Untagged
@@ -1345,6 +1351,7 @@ MonoBehaviour:
   reasoningEffort: 2
   maxTokens: 400
   timeoutSeconds: 40
+  retryWithoutReasoningOnEmptyReply: 1
   forceOfflineMode: 0
   logTraffic: 0
 --- !u!114 &733304431
@@ -1375,6 +1382,7 @@ MonoBehaviour:
   startDelay: 0.6
   beatBeforeBoard: 0.35
   maxWaitForGreeting: 12
+  maxWaitForTargetIntro: 20
   beatBeforeQuest: 1.2
   fadeOverlay: {fileID: 0}
   fadeDuration: 0.8
@@ -1410,6 +1418,55 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &733304434
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 733304429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 0f9f3c11ffb9fc84ba1c02d71d561470, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  endpoint: https://api.openai.com/v1/audio/speech
+  model: gpt-4o-mini-tts
+  voice: nova
+  speed: 1
+  apiKey: 
+  apiKeyEnvironmentVariable: OPENAI_API_KEY
+  audioSource: {fileID: 0}
+  volume: 1
+  cacheSize: 24
+  timeoutSeconds: 30
+  maxCharacters: 400
+  forceOfflineMode: 0
+  logTraffic: 0
+--- !u!114 &733304435
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 733304429}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b07641db2b5258a41a20a0bf83a83f48, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  endpoint: https://api.openai.com/v1/audio/transcriptions
+  model: whisper-1
+  language: ko
+  apiKey: 
+  apiKeyEnvironmentVariable: OPENAI_API_KEY
+  microphoneDevice: 
+  sampleRate: 16000
+  maxRecordSeconds: 20
+  minRecordSeconds: 0.4
+  timeoutSeconds: 30
+  forceOfflineMode: 0
+  logTraffic: 0
 --- !u!1 &761340678
 GameObject:
   m_ObjectHideFlags: 0
@@ -1566,6 +1623,15 @@ MonoBehaviour:
   - NanumGothic
   - Noto Sans CJK KR
   - AppleSDGothicNeo-Regular
+  targetCharactersPerLine: 20
+  minimumCharactersPerLine: 10
+  wrapAtWordBoundaries: 1
+  lineSpacing: 1.25
+  maxCharactersPerBubble: 60
+  tts: {fileID: 733304434}
+  speakAloud: 1
+  voicedTailSeconds: 0.6
+  maxVoiceSeconds: 30
   useTypewriter: 1
   charactersPerSecond: 35
   baseHoldSeconds: 1.5
@@ -8074,6 +8140,91 @@ MonoBehaviour:
   m_ChildScaleWidth: 0
   m_ChildScaleHeight: 0
   m_ReverseArrangement: 0
+--- !u!1 &1756505713
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1756505714}
+  - component: {fileID: 1756505716}
+  - component: {fileID: 1756505715}
+  m_Layer: 0
+  m_Name: VoiceInput
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &1756505714
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1756505713}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 1999102668}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 100, y: 100}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &1756505715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1756505713}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 317b2adfd371c2c48b8f006be2e67359, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  assistant: {fileID: 1999102669}
+  speechToText: {fileID: 733304435}
+  followTarget: {fileID: 1999102668}
+  localOffset: {x: 0, y: -0.22, z: 0}
+  lookTarget: {fileID: 330585546}
+  metersPerCanvasUnit: 0.001
+  buttonSize: 96
+  idleColor: {r: 0.12, g: 0.18, b: 0.24, a: 0.92}
+  listeningColor: {r: 0.95, g: 0.25, b: 0.22, a: 0.95}
+  busyColor: {r: 0.55, g: 0.45, b: 0.95, a: 0.92}
+  iconColor: {r: 0.92, g: 0.97, b: 1, a: 1}
+  blockWhileAssistantSpeaks: 1
+  interruptAssistantOnRecord: 0
+--- !u!223 &1756505716
+Canvas:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1756505713}
+  m_Enabled: 1
+  serializedVersion: 3
+  m_RenderMode: 2
+  m_Camera: {fileID: 0}
+  m_PlaneDistance: 100
+  m_PixelPerfect: 0
+  m_ReceivesEvents: 1
+  m_OverrideSorting: 0
+  m_OverridePixelPerfect: 0
+  m_SortingBucketNormalizedSize: 0
+  m_VertexColorAlwaysGammaSpace: 0
+  m_AdditionalShaderChannelsFlag: 0
+  m_UpdateRectTransformForStandalone: 0
+  m_SortingLayerID: 0
+  m_SortingOrder: 0
+  m_TargetDisplay: 0
 --- !u!1 &1796996457
 GameObject:
   m_ObjectHideFlags: 0
@@ -8541,6 +8692,8 @@ MonoBehaviour:
   bobFrequency: 0.5
   swayAmplitude: 0.02
   swayFrequency: 0.33
+  closeUpOverrideActive: 0
+  closeUpLocalOffset: {x: 0.4, y: 0.15, z: 0.7}
   faceUser: 1
   turnSpeed: 6
   bankPerSpeed: 6
@@ -8568,6 +8721,7 @@ Transform:
   - {fileID: 1112051546}
   - {fileID: 1015583578}
   - {fileID: 831819911}
+  - {fileID: 1756505714}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!114 &1999102669
@@ -8588,12 +8742,51 @@ MonoBehaviour:
   client: {fileID: 733304430}
   session: {fileID: 733304432}
   mutationHighlighter: {fileID: 0}
+  dockingQuest: {fileID: 0}
+  levelController: {fileID: 0}
+  compoundPanel: {fileID: 0}
   greetingLines:
   - "\uC548\uB155\uD558\uC138\uC694. \uC800\uB294 \uB2F9\uC2E0\uC758 AI \uACF5\uB3D9\uC5F0\uAD6C\uC790\uC785\uB2C8\uB2E4."
   - "\uC624\uB298\uC740 \uB3CC\uC5F0\uBCC0\uC774 \uD558\uB098\uB97C \uAE38\uB4E4\uC5EC
     \uBCFC \uAC70\uC608\uC694. \uC5B4\uB5A4 \uC0AC\uB840\uBD80\uD130 \uBCF4\uC2DC\uACA0\uC5B4\uC694?"
   announceStages: 1
   elaborateWithLlm: 1
+  playQuestScenario: 1
+  introduceTargetWithLlm: 1
+  targetIntroPrompt: "\uD50C\uB808\uC774\uC5B4\uAC00 '{title}' \uC0AC\uAC74\uC744
+    \uACE8\uB790\uC5B4\uC694. {gene} \uB2E8\uBC31\uC9C8\uC774 \uC6B0\uB9AC \uBAB8\uC5D0\uC11C
+    \uC6D0\uB798 \uBB34\uC2A8 \uC77C\uC744 \uD558\uB294\uC9C0, \uADF8\uB9AC\uACE0
+    {mutation} \uBCC0\uC774\uAC00 \uC0DD\uAE30\uBA74 \uBB34\uC5C7\uC774 \uB2EC\uB77C\uC9C0\uB294\uC9C0
+    \uC77C\uC0C1\uC801\uC778 \uBE44\uC720\uB97C \uB4E4\uC5B4 \uC124\uBA85\uD574\uC8FC\uC138\uC694.
+    \uC544\uC9C1 \uB2E8\uACC4\uBCC4 \uACF5\uB7B5\uC774\uB098 \uC815\uB2F5 \uBB3C\uC9C8\uC740
+    \uC54C\uB824\uC8FC\uC9C0 \uB9C8\uC138\uC694."
+  explainDockingWithLlm: 1
+  dockingSuccessPrompt: "\uD50C\uB808\uC774\uC5B4\uAC00 '{compound}'\uB85C \uB3C4\uD0B9\uC5D0
+    \uC131\uACF5\uD588\uC5B4\uC694. \uC774 \uBB3C\uC9C8\uC774 \uC65C \uD1B5\uD588\uB294\uC9C0,
+    \uADF8\uB9AC\uACE0 \uC774\uAC8C \uD658\uC790\uC5D0\uAC8C \uC5B4\uB5A4 \uC758\uBBF8\uC778\uC9C0
+    \uCE6D\uCC2C\uC744 \uC11E\uC5B4 \uC124\uBA85\uD574\uC8FC\uC138\uC694."
+  dockingFailurePrompt: "\uD50C\uB808\uC774\uC5B4\uAC00 '{compound}'\uB97C \uC2DC\uB3C4\uD588\uB294\uB370
+    \uC2E4\uD328\uD588\uC5B4\uC694. \uC65C \uC774\uB7F0 \uACB0\uACFC\uAC00 \uB098\uC654\uB294\uC9C0
+    '\uD604\uC7AC \uC0C1\uD669'\uC5D0 \uC801\uD78C \uD310\uC815 \uB0B4\uC6A9\uC744
+    \uADFC\uAC70\uB85C \uC124\uBA85\uD558\uACE0, \uB2E4\uC74C\uC5D0 \uBB34\uC5C7\uC744
+    \uB208\uC5EC\uACA8\uBCF4\uBA74 \uC88B\uC744\uC9C0 \uD55C \uAC78\uC74C\uB9CC \uC774\uB04C\uC5B4
+    \uC8FC\uC138\uC694. \uC815\uB2F5 \uBB3C\uC9C8\uC740 \uC54C\uB824\uC8FC\uC9C0
+    \uB9C8\uC138\uC694."
+  narrateStructureLevels: 1
+  elaborateStructureLevelsWithLlm: 1
+  ribbonLine: "\uC9C0\uAE08 \uBCF4\uC774\uB294 \uAC8C \uB2E8\uBC31\uC9C8 \uC804\uCCB4
+    \uBAA8\uC591\uC774\uC57C. \uB9AC\uBCF8\uCC98\uB7FC \uC0DD\uAE34 \uC904\uAE30\uB97C
+    \uB530\uB77C\uAC00\uB2E4 \uAD81\uAE08\uD55C \uACF3\uC744 \uB20C\uB7EC\uBCF4\uBA74
+    \uADF8 \uBD80\uBD84\uB9CC \uD655\uB300\uD574\uC11C \uBCFC \uC218 \uC788\uC5B4."
+  helixLine: "\uC88B\uC544, \uB124\uAC00 \uACE0\uB978 \uAD6C\uAC04\uB9CC \uD06C\uAC8C
+    \uB744\uC6E0\uC5B4. \uC774\uB807\uAC8C \uB3CC\uB3CC \uB9D0\uB9B0 \uBAA8\uC591\uC744
+    \uB098\uC120\uC774\uB77C\uACE0 \uBD88\uB7EC. \uD55C \uBC88 \uB354 \uB204\uB974\uBA74
+    \uC774 \uC548\uC758 \uC6D0\uC790\uAE4C\uC9C0 \uB4E4\uC5B4\uAC08 \uC218 \uC788\uC5B4."
+  aminoAcidLine: "\uC5EC\uAE30\uAC00 \uAC00\uC7A5 \uC548\uCABD\uC774\uC57C. \uC774\uC81C
+    \uACF5 \uD558\uB098\uD558\uB098\uAC00 \uC6D0\uC790\uC57C. \uC0C9\uAE54\uC774
+    \uB2E4\uB978 \uAC74 \uC11C\uB85C \uB2E4\uB978 \uC6D0\uC18C\uB77C\uB294 \uB73B\uC774\uC9C0."
+  blockInteractionWhileSpeaking: 1
+  blockWhileWaitingForLlm: 0
   offlineNotice: "\uC9C0\uAE08\uC740 \uC678\uBD80 \uC9C0\uC2DD \uC5F0\uACB0\uC774
     \uAEBC\uC838 \uC788\uC5B4\uC694. \uC81C\uAC00 \uC544\uB294 \uBC94\uC704\uC5D0\uC11C
     \uC548\uB0B4\uD560\uAC8C\uC694."

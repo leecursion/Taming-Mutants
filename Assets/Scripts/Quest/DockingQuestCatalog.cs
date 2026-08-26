@@ -218,12 +218,12 @@ public class DockingQuestCatalog : MonoBehaviour
         OnQuestStarted?.Invoke(def);
     }
 
-    private void HandleDockingFinished(DockingOutcome outcome, CompoundData data)
+    private void HandleDockingFinished(DockingResult result)
     {
         // 세션(인트로 선택)이 있는 씬에서는 진행 순서를 세션이 소유한다 —
         // 카탈로그가 멋대로 다음 도킹 퀘스트로 구조를 갈아치우면 안 된다.
         if (questSession != null) return;
-        if (outcome != DockingOutcome.Success || !autoAdvanceOnSuccess) return;
+        if (!result.IsSuccess || !autoAdvanceOnSuccess) return;
 
         if (CurrentIndex + 1 < _quests.Count)
             StartCoroutine(AdvanceAfterDelay(CurrentIndex + 1));

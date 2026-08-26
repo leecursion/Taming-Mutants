@@ -67,11 +67,11 @@ public class P53QuestDirector : MonoBehaviour
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
     }
 
-    private void HandleDockingFinished(DockingOutcome outcome, CompoundData data)
+    private void HandleDockingFinished(DockingResult result)
     {
         if (_finalePlayed) return;
-        if (outcome != DockingOutcome.Success) return;
-        if (data == null || data.id != stabilizerCompoundId) return;
+        if (!result.IsSuccess) return;
+        if (result.Compound == null || result.Compound.id != stabilizerCompoundId) return;
 
         _finalePlayed = true;
         StartCoroutine(FinaleRoutine());

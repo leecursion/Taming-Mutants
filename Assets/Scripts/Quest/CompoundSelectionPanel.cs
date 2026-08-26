@@ -101,6 +101,8 @@ public class CompoundSelectionPanel : MonoBehaviour
     public Color labelColor = Color.black;
     public float nameLabelSize = 0.045f;
     public float resultLabelSize = 0.05f;
+    [Tooltip("도킹 결과 문구(빨강/초록)를 화면에도 띄울지. 비서가 같은 내용을 말하고 읽어주므로 기본은 끔.")]
+    public bool showResultLabels;
 
     [Header("입력 (PC 폴백)")]
     [Tooltip("비워두면 Camera.main")]
@@ -111,7 +113,20 @@ public class CompoundSelectionPanel : MonoBehaviour
     public event Action<CompoundSlot> OnCompoundChosen;
 
     public IReadOnlyList<CompoundSlot> Slots => _slots;
+    /// <summary>도킹 진행 중 등, 퀘스트 진행 쪽이 잠그는 스위치.</summary>
     public bool Interactable { get; set; } = true;
+
+    /// <summary>
+    /// 비서가 말하는 동안 잠그는 스위치. <see cref="Interactable"/>과 따로 둔다.
+    ///
+    /// 한 스위치를 둘이 나눠 쓰면 서로 덮어쓴다. 도킹이 끝나며 Interactable=true로 풀어주는
+    /// 순간 비서가 아직 말하는 중인데 잠금이 풀리고, 반대로 비서가 말을 마치며 풀어주면
+    /// 도킹 연출 도중인데 다음 물질을 고를 수 있게 된다. 둘 다 만족해야 누를 수 있다.
+    /// </summary>
+    public bool SpeechLocked { get; set; }
+
+    /// <summary>실제로 입력을 받을 수 있는 상태인지.</summary>
+    private bool AcceptsInput => Interactable && !SpeechLocked;
 
     private readonly List<CompoundSlot> _slots = new List<CompoundSlot>();
     private Transform _contentRoot;   // 슬롯/라벨이 모두 이 아래 — 레벨 연동 표시 토글용
@@ -468,6 +483,15 @@ public class CompoundSelectionPanel : MonoBehaviour
     /// </summary>
     public void ShowResult(CompoundData data, Color color, string messageOverride = null, string affinityOverride = null)
     {
+        // 결과는 AI 비서가 말풍선으로 말하고 소리로도 읽어준다. 같은 내용을 화면에 한 번 더
+        // 띄우면 시선이 갈리고, 색만 다른 글자가 분자 위에 겹쳐 보인다.
+        // 대본 문구(result_message)는 비서가 항상 말하므로 백엔드가 없어도 정보가 사라지지 않는다.
+        if (!showResultLabels)
+        {
+            ClearResult();
+            return;
+        }
+
         if (_resultText != null)
         {
             _resultText.text = messageOverride ?? data.result_message;
@@ -500,7 +524,7 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void Update()
     {
-        if (!Interactable || targetCamera == null || Mouse.current == null) return;
+        if (!AcceptsInput || targetCamera == null || Mouse.current == null) return;
         if (_contentRoot != null && !_contentRoot.gameObject.activeSelf) return; // 숨김 상태에선 입력 무시
 
         Ray ray = targetCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
@@ -526,7 +550,7 @@ public class CompoundSelectionPanel : MonoBehaviour
     /// <summary>선택 확정. XR 컨트롤러/핸드 트래킹 인터랙터에서도 이 메서드를 호출하면 된다.</summary>
     public void SelectSlot(CompoundSlot slot)
     {
-        if (!Interactable || slot == null) return;
+        if (!AcceptsInput || slot == null) return;
         OnCompoundChosen?.Invoke(slot);
     }
 }

@@ -41,6 +41,10 @@ public class QuestDefinition : ScriptableObject
     [Tooltip("표적 포켓 이름. 비서 대사와 LLM 컨텍스트에 쓰인다.")]
     public string targetPocketLabel = "Switch-II Pocket";
 
+    [Header("도입 시나리오 (퀘스트를 시작할 때 비서가 연기하는 사건 브리핑)")]
+    [Tooltip("비워두면 비서가 제목과 요약만 읽고 바로 1단계로 넘어간다.")]
+    public QuestScenario scenario = new QuestScenario();
+
     [Header("단계별 진행 (PDF의 Level 1~5에 대응)")]
     public QuestStageBriefing[] stages = Array.Empty<QuestStageBriefing>();
 
@@ -73,6 +77,15 @@ public class QuestDefinition : ScriptableObject
     public string BuildContextHeader()
     {
         return $"퀘스트: {title} ({gene} {mutation}) / 질환: {subtitle} / 표적: {targetPocketLabel}";
+    }
+
+    /// <summary>
+    /// LLM에 넘길 사건 설정. 이게 없으면 모델은 교과서식 설명만 돌려주고,
+    /// 플레이어가 듣고 있는 "사건을 조사하는 이야기"와 말투도 내용도 따로 논다.
+    /// </summary>
+    public string BuildScenarioContext()
+    {
+        return scenario != null ? scenario.BuildContext() : null;
     }
 }
 

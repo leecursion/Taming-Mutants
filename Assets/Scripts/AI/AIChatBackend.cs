@@ -75,6 +75,7 @@ public class AIRequestContext
 {
     public string questId;
     public string questHeader;    // "퀘스트: KRAS G12C (KRAS G12C) / 질환: ..."
+    public string scenario;       // QuestScenario.BuildContext() — 사건 번호/현장/의뢰인/개요
     public string stage;          // 단계 enum 이름
     public string stageTitle;
     public string stageObjective;
@@ -86,6 +87,7 @@ public class AIRequestContext
         var builder = new StringBuilder();
 
         Append(builder, questHeader);
+        Append(builder, scenario);
         Append(builder, string.IsNullOrEmpty(stageTitle) ? stage : $"현재 단계: {stageTitle}");
         Append(builder, string.IsNullOrEmpty(stageObjective) ? null : $"단계 목표: {stageObjective}");
         Append(builder, stageKnowledge);
