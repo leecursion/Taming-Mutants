@@ -154,6 +154,10 @@ public class StructureLevelController : MonoBehaviour
 
         _proteinLoader.SetAtomsVisible(false); // 아미노산 단계로 가기 전까지 원자 표시는 숨김
         SetLevel(ViewLevel.Ribbon);
+
+        // 방금 리본/Helix를 통째로 새로 만들었으니, 이 오브젝트를 contentRoot로 쓰는
+        // LevelStage(Level2~4)가 렌더러 캐시를 확실히 다시 잡도록 직접 알린다.
+        LevelStage.InvalidateSharedContent(gameObject);
     }
 
     private void ClearBuilt()
@@ -195,7 +199,9 @@ public class StructureLevelController : MonoBehaviour
         foreach (var atom in data.atoms)
         {
             if (atom.name != "CA") continue;
-            Vector3 pos = new Vector3(atom.x, atom.y, atom.z) * 0.1f; // ProteinLoader.SpawnStructure와 동일한 스케일
+            // ProteinLoader.SpawnStructure와 동일한 스케일 + 중심 보정 — 그래야 리본이
+            // ProteinLoader가 배치한 원자와 같은 자리(원점 근처)에 겹쳐진다.
+            Vector3 pos = new Vector3(atom.x, atom.y, atom.z) * 0.1f - _proteinLoader.CenterOffset;
             trace.Add(new KeyValuePair<int, Vector3>(atom.res_id, pos));
         }
         trace.Sort((a, b) => a.Key.CompareTo(b.Key));

@@ -619,7 +619,7 @@ MonoBehaviour:
   assistant: {fileID: 0}
   mapping:
   - stage: 0
-    level: 1
+    level: 2
   - stage: 1
     level: 2
   - stage: 2
@@ -628,7 +628,7 @@ MonoBehaviour:
     level: 4
   - stage: 4
     level: 5
-  openFromBodyLevel: 1
+  openFromBodyLevel: 0
   bodyDwellSeconds: 3.5
   hideAssistantDuringTransition: 1
 --- !u!114 &282782783
@@ -673,6 +673,14 @@ MonoBehaviour:
   - {fileID: 735328944}
   transitions:
   - from: 0
+    to: 2
+    style: 1
+    duration: 3
+    via: {fileID: 0}
+    fovPunch: 22
+    revealAt: 0.5
+    hidePreviousAt: 0.7
+  - from: 0
     to: 1
     style: 1
     duration: 3.2
@@ -712,6 +720,38 @@ MonoBehaviour:
     fovPunch: -14
     revealAt: 0.6
     hidePreviousAt: 0.5
+  - from: 1
+    to: 0
+    style: 4
+    duration: 2.2
+    via: {fileID: 0}
+    fovPunch: -14
+    revealAt: 0.4
+    hidePreviousAt: 0.75
+  - from: 2
+    to: 0
+    style: 4
+    duration: 2.4
+    via: {fileID: 0}
+    fovPunch: -14
+    revealAt: 0.35
+    hidePreviousAt: 0.75
+  - from: 3
+    to: 0
+    style: 4
+    duration: 2.4
+    via: {fileID: 0}
+    fovPunch: -14
+    revealAt: 0.35
+    hidePreviousAt: 0.75
+  - from: 4
+    to: 0
+    style: 4
+    duration: 2.6
+    via: {fileID: 0}
+    fovPunch: -14
+    revealAt: 0.35
+    hidePreviousAt: 0.75
   fallback:
     from: 0
     to: 0
@@ -1707,7 +1747,7 @@ Transform:
   m_GameObject: {fileID: 556308018}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.6, z: -3}
+  m_LocalPosition: {x: 0, y: 1.8, z: -200.7}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1926,6 +1966,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 664515352}
+  - component: {fileID: 277173205}
   m_Layer: 0
   m_Name: DnaHelixBackdrops
   m_TagString: Untagged
@@ -1950,6 +1991,22 @@ Transform:
   - {fileID: 1784250451}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &277173205
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 664515351}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5617119f43be4fd89e12158267ec1028, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  director: {fileID: 0}
+  targets:
+  - {fileID: 1379285534}
+  - {fileID: 1784250450}
 --- !u!1 &682573764
 GameObject:
   m_ObjectHideFlags: 0
@@ -2273,8 +2330,8 @@ MonoBehaviour:
   hideStageUntilQuestStarts: 1
   startDelay: 0.6
   beatBeforeBoard: 0.35
-  maxWaitForGreeting: 12
-  maxWaitForTargetIntro: 20
+  maxWaitForGreeting: 20
+  maxWaitForTargetIntro: 40
   beatBeforeQuest: 1.2
   fadeOverlay: {fileID: 0}
   fadeDuration: 0.8
@@ -9036,7 +9093,7 @@ Transform:
   m_GameObject: {fileID: 1502429696}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.6, z: -3}
+  m_LocalPosition: {x: 0, y: 1.9, z: -3}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -10009,7 +10066,7 @@ Transform:
   m_GameObject: {fileID: 1907104945}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 1.6, z: -3}
+  m_LocalPosition: {x: 0, y: 1.85, z: -101.2}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -10720,7 +10777,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 9078707193705603589, guid: fd382337df2655c49872050a93ad2080, type: 3}
       propertyPath: m_LocalPosition.z
-      value: -1
+      value: 200
       objectReference: {fileID: 0}
     - target: {fileID: 9078707193705603589, guid: fd382337df2655c49872050a93ad2080, type: 3}
       propertyPath: m_LocalRotation.w
