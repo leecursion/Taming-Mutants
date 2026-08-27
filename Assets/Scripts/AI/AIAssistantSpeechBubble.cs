@@ -72,7 +72,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     [Tooltip("말풍선 최대 폭을 화면 폭의 이 비율로 정한다. (예: 1/3이면 화면 오른쪽 3분의 1만큼)\n" +
              "constantApparentSize 덕분에 카메라 거리와 무관하게 항상 같은 화면 비율을 차지한다.")]
     [Range(0.05f, 1f)]
-    public float screenWidthFraction = 1f / 3f;
+    public float screenWidthFraction = 0.24f;
 
     [Tooltip("어절(띄어쓰기) 단위로 줄을 끊는다. Unity 기본 Text는 한글을 CJK로 보고 글자 단위로 " +
              "아무 데서나 끊어 '정밀검 / 사실'처럼 단어 한가운데가 갈라진다.")]

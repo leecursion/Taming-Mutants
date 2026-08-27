@@ -43,13 +43,13 @@ public static class AIAssistantSetupMenu
 
     // 분자 옆에 세울 때의 확대 배율. 분자가 카메라에서 약 3m 앞에 있어
     // 등배로 두면 사용자 옆에 있을 때보다 훨씬 작게 보인다.
-    private const float AnchorModeScale = 1.8f;
+    private const float AnchorModeScale = 1.25f;
 
     // 말풍선: 캔버스 300unit × 스케일 0.001 = 실제 폭 0.30m.
     // 캔버스를 크게 잡고 잘게 축소해야 글자가 픽셀 단위로 뭉개지지 않는다.
     private const float BubbleWidth = 300f;
     private const float BubbleCanvasScale = 0.001f;
-    private const float BubblePivotX = 0.85f;
+    private const float BubblePivotX = 0.94f;
     // 말풍선을 "화면에서 일정한 크기"로 유지하는 기준 카메라 거리(m).
     // 아래 치수들은 이 거리에서 읽기 좋도록 잡은 값이고, 실제 거리 보정은
     // AIAssistantSpeechBubble이 실행 중에 맡는다.

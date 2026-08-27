@@ -123,6 +123,12 @@ public class CompoundSelectionPanel : MonoBehaviour
     public Color labelColor = Color.white;
     public float nameLabelSize = 0.045f;
     public float resultLabelSize = 0.05f;
+    [Tooltip("이름표가 칸 너비를 넘으면 자동으로 줄을 바꾼다. TextMesh는 자체 줄바꿈이 없어서, " +
+             "끄면 긴 이름이 한 줄로 뻗어 옆 칸 이름표와 겹친다.")]
+    public bool wrapLabels = true;
+    [Tooltip("이름표가 쓸 수 있는 가로 폭. 칸 너비(boxSize) 대비 배율이며, " +
+             "1보다 크면 칸 사이 간격(spacing)까지 조금 빌려 쓴다.")]
+    [Range(0.6f, 1.6f)] public float labelWidthRatio = 1.15f;
     [Tooltip("도킹 결과 문구(빨강/초록)를 화면에도 띄울지. 비서가 같은 내용을 말하고 읽어주므로 기본은 끔.")]
     public bool showResultLabels;
 
@@ -504,8 +510,16 @@ public class CompoundSelectionPanel : MonoBehaviour
         go.transform.SetParent(parent, false);
         go.transform.localPosition = localPos;
 
+        // 부제는 <size=28>로 작게 찍히므로(본문 48) 같은 폭에 더 많은 글자가 들어간다.
+        const float SubtitleFontRatio = 28f / 48f;
+
+        string titleText = Wrap(title, nameLabelSize);
+        string subtitleText = Wrap(subtitle, nameLabelSize * SubtitleFontRatio);
+
         var tm = go.AddComponent<TextMesh>();
-        tm.text = string.IsNullOrEmpty(subtitle) ? title : $"{title}\n<size=28>{subtitle}</size>";
+        tm.text = string.IsNullOrEmpty(subtitleText)
+            ? titleText
+            : $"{titleText}\n<size=28>{subtitleText}</size>";
         tm.font = labelFont;
         tm.fontSize = 48;
         tm.characterSize = nameLabelSize * 10f / 48f;
@@ -515,6 +529,81 @@ public class CompoundSelectionPanel : MonoBehaviour
         tm.color = labelColor;
         var mr = go.GetComponent<MeshRenderer>();
         if (labelFont != null) mr.sharedMaterial = labelFont.material;
+    }
+
+    /// <summary>
+    /// 이름표를 칸 너비에 맞게 줄바꿈한다.
+    ///
+    /// TextMesh에는 자동 줄바꿈이 없어서 긴 이름이 한 줄로 뻗고, 2열 격자에서
+    /// 옆 칸 이름표와 그대로 겹친다("Generic Cys-reactive Warhead" 같은 것들).
+    /// 폰트 메트릭을 직접 재는 대신 글자 폭을 근사한다 — 한글·한자는 라틴 문자의
+    /// 약 두 배 폭이므로 2, 나머지는 1로 세고 반각(半角) 단위로 한 줄 예산을 잡는다.
+    /// </summary>
+    private string Wrap(string text, float emSize)
+    {
+        if (!wrapLabels || string.IsNullOrWhiteSpace(text)) return text;
+
+        float available = boxSize * Mathf.Max(labelWidthRatio, 0.1f);
+        float halfEm = Mathf.Max(emSize * 0.5f, 1e-4f);
+        int budget = Mathf.Max(6, Mathf.FloorToInt(available / halfEm));
+
+        var result = new System.Text.StringBuilder(text.Length + 8);
+        int lineUnits = 0;
+
+        foreach (string word in text.Split(' '))
+        {
+            if (word.Length == 0) continue;
+
+            int wordUnits = Units(word);
+
+            if (lineUnits > 0 && lineUnits + 1 + wordUnits > budget)
+            {
+                result.Append('\n');
+                lineUnits = 0;
+            }
+            else if (lineUnits > 0)
+            {
+                result.Append(' ');
+                lineUnits += 1;
+            }
+
+            // 한 단어가 통째로 예산을 넘으면(긴 화합물명) 글자 단위로 끊는다.
+            if (wordUnits > budget)
+            {
+                foreach (char c in word)
+                {
+                    int cu = Units(c.ToString());
+                    if (lineUnits > 0 && lineUnits + cu > budget)
+                    {
+                        result.Append('\n');
+                        lineUnits = 0;
+                    }
+                    result.Append(c);
+                    lineUnits += cu;
+                }
+                continue;
+            }
+
+            result.Append(word);
+            lineUnits += wordUnits;
+        }
+
+        return result.ToString();
+    }
+
+    /// <summary>글자 폭을 반각 단위로 센다. 한글·한자·전각 기호는 2, 나머지는 1.</summary>
+    private static int Units(string s)
+    {
+        int n = 0;
+        foreach (char c in s)
+            n += (c >= 0x1100 && c <= 0x11FF) ||   // 한글 자모
+                 (c >= 0x3000 && c <= 0x303F) ||   // CJK 문장부호
+                 (c >= 0x3130 && c <= 0x318F) ||   // 호환 자모
+                 (c >= 0x4E00 && c <= 0x9FFF) ||   // 한자
+                 (c >= 0xAC00 && c <= 0xD7A3) ||   // 한글 음절
+                 (c >= 0xFF00 && c <= 0xFF60)      // 전각 영숫자
+                 ? 2 : 1;
+        return n;
     }
 
     private void CreateResultLabels()

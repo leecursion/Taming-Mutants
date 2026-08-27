@@ -52,6 +52,11 @@ public class AIAssistantFollower : MonoBehaviour
     public float screenEdgePadding = 0.025f;
     [Tooltip("대상의 경계를 다시 재는 주기(초). 원자가 새로 생기면 주기와 무관하게 즉시 다시 잰다.")]
     public float anchorBoundsRefreshInterval = 2f;
+    [Tooltip("화면 가장자리에 붙일 때 남길 추가 여유 (0~1).\n\n" +
+             "0이면 말풍선 패널이 잘리지 않는 선까지 모서리에 바짝 붙는다(번지는 글로우는 " +
+             "잘려도 눈에 띄지 않으므로 계산에서 뺀다). 1로 올리면 글로우까지 자리를 비워주지만, " +
+             "분자가 화면을 꽉 채우는 장면에서는 비서가 안쪽으로 밀린다.")]
+    [Range(0f, 1f)] public float bubbleRightReserve;
 
     [Header("따라오기 (lazy-follow)")]
     [Tooltip("정위치가 이 반경 밖으로 벗어났을 때만 다시 쫓아간다. 작은 머리 움직임에는 반응하지 않는다.")]
@@ -77,8 +82,10 @@ public class AIAssistantFollower : MonoBehaviour
     [Tooltip("오버라이드 중 사용할 사용자 기준 오프셋 (localOffset과 같은 축 규칙: x=오른쪽, y=위, z=앞).\n\n" +
              "z(카메라와의 거리)가 곧 비서가 화면에서 차지하는 크기다. 평소(anchorTarget 옆 " +
              "ScreenSpace 배치)에는 분자까지 거리에서 anchorOffset.z만큼 당긴 자리에 서므로 대략 " +
-             "1.8m인데, 여기 z를 0.7 같은 작은 값으로 두면 그 사건에서만 비서가 2배 이상 커 보인다. " +
-             "방향(x:z, y:z 비율)은 localOffset과 같게 두어 화면상 위치는 평소와 같은 자리를 유지한다.")]
+             "1.8m인데, 여기 z를 0.7 같은 작은 값으로 두면 그 사건에서만 비서가 2배 이상 커 보인다.\n\n" +
+             "x/y는 카메라를 못 찾았을 때의 폴백에만 쓴다. 평소에는 z가 정한 깊이 평면 위에서 " +
+             "화면 우상단 가장자리로 자동 배치되므로(리본·Helix 단계와 같은 기준), x/y를 바꿔도 " +
+             "화면 위치는 달라지지 않는다.")]
     public Vector3 closeUpLocalOffset = new Vector3(0.65f, 0.36f, 1.3f);
 
     [Header("바라보기")]
@@ -159,10 +166,64 @@ public class AIAssistantFollower : MonoBehaviour
 
     private Vector3 ComputeAnchor()
     {
-        if (closeUpOverrideActive) return ComputeUserRelativeAnchor(closeUpLocalOffset);
+        if (closeUpOverrideActive) return ComputeCloseUpAnchor();
         if (anchorTarget != null) return ComputeAnchorBesideTarget();
 
         return ComputeUserRelativeAnchor(localOffset);
+    }
+
+    /// <summary>
+    /// 클로즈업 중(카메라가 변이 자리로 확 당겨진 동안)의 자리.
+    ///
+    /// 분자 경계를 기준으로 삼지 않는 것은 그대로 둔다 — 카메라가 급히 움직이는 구간이라
+    /// 대상 경계를 매 프레임 다시 재면 비서가 따라 출렁인다. <see cref="closeUpLocalOffset"/>의
+    /// z가 정한 안정된 깊이는 유지하되, 그 평면 위에서 x/y만 화면 우상단 가장자리로 보낸다.
+    ///
+    /// 고정 오프셋(x,y)을 그대로 쓰면 화면비·FOV에 따라 자리가 들쭉날쭉하고, 리본·Helix
+    /// 단계(ScreenSpace 배치)와 눈에 띄게 어긋난다.
+    /// </summary>
+    private Vector3 ComputeCloseUpAnchor()
+    {
+        Camera cam = ResolveCamera();
+        if (cam == null) return ComputeUserRelativeAnchor(closeUpLocalOffset);
+
+        float depth = Mathf.Max(closeUpLocalOffset.z, cam.nearClipPlane + 0.05f);
+        return TryComputeScreenCornerAnchor(cam, depth, out Vector3 position)
+            ? position
+            : ComputeUserRelativeAnchor(closeUpLocalOffset);
+    }
+
+    /// <summary>
+    /// 주어진 깊이 평면에서 어셈블리를 화면 우상단에 붙인다.
+    /// 잘림 판정 기준은 <see cref="TryComputeAnchorOnScreen"/>과 같다 —
+    /// 말풍선 패널까지는 지키고 번지는 글로우는 넘어가게 둔다.
+    /// </summary>
+    private bool TryComputeScreenCornerAnchor(Camera cam, float depth, out Vector3 position)
+    {
+        position = default;
+
+        float viewHeight = cam.orthographic
+            ? cam.orthographicSize * 2f
+            : 2f * depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float viewWidth = viewHeight * cam.aspect;
+        if (viewHeight <= 1e-4f || viewWidth <= 1e-4f) return false;
+
+        MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out _,
+                               out float rightForEdge, out float topForEdge);
+
+        float padX = screenEdgePadding / Mathf.Max(cam.aspect, 1e-3f);
+        float edgeRight = Mathf.Lerp(rightForEdge, right, Mathf.Clamp01(bubbleRightReserve));
+
+        float vx = 1f - padX - edgeRight / viewWidth;
+        float vy = 1f - screenEdgePadding - topForEdge / viewHeight;
+
+        // 어셈블리가 화면보다 크면 위 식이 반대쪽으로 넘어간다. 그때는 왼쪽/아래가 잘리는 편이
+        // 나으므로 하한을 우선한다(Mathf.Max가 곧 하한 우선).
+        vx = Mathf.Max(vx, padX - left / viewWidth);
+        vy = Mathf.Max(vy, screenEdgePadding - bottom / viewHeight);
+
+        position = cam.ViewportToWorldPoint(new Vector3(vx, vy, depth));
+        return true;
     }
 
     private Vector3 ComputeUserRelativeAnchor(Vector3 offset)
@@ -228,11 +289,11 @@ public class AIAssistantFollower : MonoBehaviour
         float viewWidth = viewHeight * cam.aspect;
         if (viewHeight <= 1e-4f || viewWidth <= 1e-4f) return false;
 
-        MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out float top);
+        MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out float top,
+                               out float rightForEdge, out float topForEdge);
 
         // 루트 기준 여유를 뷰포트 비율로. left/bottom은 음수라 빼면 그만큼 밀린다.
         float vLeft = left / viewWidth;
-        float vRight = right / viewWidth;
         float vBottom = bottom / viewHeight;
         float vTop = top / viewHeight;
 
@@ -245,7 +306,13 @@ public class AIAssistantFollower : MonoBehaviour
         float marginX = marginY / Mathf.Max(cam.aspect, 1e-3f);
 
         float padX = screenEdgePadding / Mathf.Max(cam.aspect, 1e-3f);
-        float maxVx = 1f - padX - vRight;
+
+        // 가장자리 한계는 "실제로 잘리면 곤란한 것"만 기준으로 잡는다. rightForEdge/topForEdge는
+        // 말풍선 패널까지는 포함하되 번지는 글로우는 뺀 값이라, 패널이 잘리지 않는 선에서
+        // 모서리에 최대한 붙는다. 여유를 더 두고 싶으면 bubbleRightReserve를 올린다.
+        float edgeRight = Mathf.Lerp(rightForEdge, right, Mathf.Clamp01(bubbleRightReserve));
+        float maxVx = 1f - padX - edgeRight / viewWidth;
+        float maxVy = 1f - screenEdgePadding - topForEdge / viewHeight;
 
         // 가로만 확실히 비켜도 겹침은 이미 불가능하다. 가로·세로를 둘 다 밀어내면
         // 어셈블리가 대각선으로 멀어져 화면을 크게 낭비하고 모서리에 자주 부딪힌다.
@@ -263,8 +330,10 @@ public class AIAssistantFollower : MonoBehaviour
         }
 
         // 그래도 안 들어가면(대상이 화면을 꽉 채운 경우) 가림 방지보다 "보이는 것"이 우선이다.
+        // 이때는 우상단 모서리에 바짝 붙는다 — 분자를 어차피 피할 수 없으니
+        // 화면을 가장 적게 잡아먹는 자리가 낫다.
         vx = Mathf.Clamp(vx, padX - vLeft, maxVx);
-        vy = Mathf.Clamp(vy, screenEdgePadding - vBottom, 1f - screenEdgePadding - vTop);
+        vy = Mathf.Clamp(vy, screenEdgePadding - vBottom, maxVy);
 
         position = cam.ViewportToWorldPoint(new Vector3(vx, vy, depth));
         return true;
@@ -362,9 +431,11 @@ public class AIAssistantFollower : MonoBehaviour
     /// 말풍선이 꺼져 있어도 자리를 미리 비워둔다. 그래야 말하기 시작하는 순간
     /// 비서가 옆으로 밀려나지 않는다.
     /// </summary>
-    private void MeasureAssemblyExtents(Camera cam, out float left, out float right, out float bottom, out float top)
+    private void MeasureAssemblyExtents(Camera cam, out float left, out float right, out float bottom, out float top,
+                                        out float rightForEdge, out float topForEdge)
     {
         left = right = bottom = top = 0f;
+        rightForEdge = topForEdge = 0f;
 
         Vector3 origin = transform.position;
         Vector3 camRight = cam.transform.right;
@@ -378,7 +449,11 @@ public class AIAssistantFollower : MonoBehaviour
 
             Bounds b = r.bounds;
             for (int i = 0; i < 8; i++)
-                Accumulate(BoundsCorner(b, i) - origin, camRight, camUp, ref left, ref right, ref bottom, ref top);
+            {
+                Vector3 offset = BoundsCorner(b, i) - origin;
+                Accumulate(offset, camRight, camUp, ref left, ref right, ref bottom, ref top);
+                AccumulateEdge(offset, camRight, camUp, ref rightForEdge, ref topForEdge);
+            }
         }
 
         if (_selfRects == null) _selfRects = GetComponentsInChildren<RectTransform>(true);
@@ -386,10 +461,38 @@ public class AIAssistantFollower : MonoBehaviour
         {
             if (rect == null) continue;
 
+            bool decorative = IsDecorativeOverflow(rect);
+
             rect.GetWorldCorners(_rectCorners);
             for (int i = 0; i < 4; i++)
-                Accumulate(_rectCorners[i] - origin, camRight, camUp, ref left, ref right, ref bottom, ref top);
+            {
+                Vector3 offset = _rectCorners[i] - origin;
+                Accumulate(offset, camRight, camUp, ref left, ref right, ref bottom, ref top);
+                if (!decorative) AccumulateEdge(offset, camRight, camUp, ref rightForEdge, ref topForEdge);
+            }
         }
+    }
+
+    /// <summary>
+    /// 화면 가장자리 한계를 잴 때 무시할 장식 레이어인지.
+    ///
+    /// 말풍선의 Glow는 패널 사방으로 번지는 반투명 여백이라 잘려도 눈에 띄지 않는다.
+    /// 이것까지 자리를 비워주면 대상이 화면을 채우는 장면에서 비서가 안쪽으로 밀려,
+    /// 정작 읽어야 할 패널은 멀쩡한데도 모서리에 붙지 못한다.
+    /// </summary>
+    private static bool IsDecorativeOverflow(RectTransform rect)
+    {
+        return rect.name == "Glow";
+    }
+
+    private static void AccumulateEdge(Vector3 offset, Vector3 camRight, Vector3 camUp,
+                                       ref float right, ref float top)
+    {
+        float x = Vector3.Dot(offset, camRight);
+        float y = Vector3.Dot(offset, camUp);
+
+        if (x > right) right = x;
+        if (y > top) top = y;
     }
 
     private static void Accumulate(Vector3 offset, Vector3 camRight, Vector3 camUp,
