@@ -37,6 +37,18 @@ public class ProteinLoader : MonoBehaviour
 
     public event Action<ProteinData> OnLoaded;
 
+    /// <summary>
+    /// 마지막으로 로드한 구조에 적용한 중심 보정값(0.1 스케일 적용 후 기준).
+    ///
+    /// PDB 원본 좌표는 결정학 좌표계의 임의 위치에 있어 원점과 거리가 멀 때가 많다
+    /// (예: -20~-40 Å대). 그대로 배치하면 단백질 전체가 ProteinAnchor_Main의 원점에서
+    /// 1~2m씩 벗어난 자리에 생기는데, 씬의 카메라 앵커는 그 원점을 기준으로 잡혀 있어
+    /// 줌인해도 구조가 화면 밖에 있는 것처럼 보인다. CenterOffset을 빼서 항상 원점 근처에
+    /// 오도록 맞춘다. StructureLevelController가 리본/Helix를 지을 때도 이 값을 같이 빼야
+    /// 원자와 리본이 어긋나지 않는다.
+    /// </summary>
+    public Vector3 CenterOffset { get; private set; }
+
     private readonly List<GameObject> _spawnedAtoms = new List<GameObject>();
     private readonly List<GameObject> _spawnedBonds = new List<GameObject>();
     // 잔기 필터 표시(SetVisibleResidues)용 — _spawnedAtoms/_spawnedBonds와 인덱스 병렬
@@ -131,6 +143,8 @@ public class ProteinLoader : MonoBehaviour
     {
         ClearPrevious();
 
+        CenterOffset = ComputeCenterOffset(data);
+
         var positions = new List<Vector3>();
         var records = new List<AtomRecord>();
 
@@ -138,7 +152,8 @@ public class ProteinLoader : MonoBehaviour
         {
             if (showBackboneOnly && !atom.is_backbone) continue;
 
-            Vector3 pos = new Vector3(atom.x, atom.y, atom.z) * 0.1f; // Angstrom -> 씬 스케일 축소
+            // Angstrom -> 씬 스케일 축소 후, 구조 전체 중심을 원점으로 당긴다.
+            Vector3 pos = new Vector3(atom.x, atom.y, atom.z) * 0.1f - CenterOffset;
             GameObject go = Instantiate(atomPrefab, transform);
             go.transform.localPosition = pos;
             go.transform.localScale = Vector3.one * atomScale;
@@ -156,6 +171,38 @@ public class ProteinLoader : MonoBehaviour
         }
 
         BuildBonds(positions, records);
+    }
+
+    /// <summary>
+    /// 구조 전체의 중심(0.1 스케일 적용 후 기준)을 구한다. CA(주쇄 알파탄소)가 있으면 그
+    /// 평균만 쓴다 — 원자 전체로 평균 내면 한쪽에 몰린 곁사슬이나 헤테로 원자에 중심이
+    /// 끌려갈 수 있어서, 사슬을 따라 고르게 분포한 CA가 구조의 "몸통" 중심을 더 안정적으로
+    /// 대표한다. CA가 하나도 없는 데이터라면(예외적인 경우) 전체 원자 평균으로 대체한다.
+    /// StructureLevelController.ExtractCaTrace도 같은 원자 목록에서 같은 계산을 하므로,
+    /// 원자와 리본이 항상 같은 기준으로 어긋남 없이 맞는다.
+    /// </summary>
+    public static Vector3 ComputeCenterOffset(ProteinData data)
+    {
+        Vector3 sum = Vector3.zero;
+        int count = 0;
+
+        foreach (var atom in data.atoms)
+        {
+            if (atom.name != "CA") continue;
+            sum += new Vector3(atom.x, atom.y, atom.z) * 0.1f;
+            count++;
+        }
+
+        if (count == 0)
+        {
+            foreach (var atom in data.atoms)
+            {
+                sum += new Vector3(atom.x, atom.y, atom.z) * 0.1f;
+                count++;
+            }
+        }
+
+        return count > 0 ? sum / count : Vector3.zero;
     }
 
     // 원자간 거리 기반 결합 추정 (O(n^2) 이지만 로딩 시 1회만 수행)
@@ -262,6 +309,52 @@ public class ProteinLoader : MonoBehaviour
     {
         foreach (var g in _spawnedAtoms) if (g) g.SetActive(visible);
         foreach (var g in _spawnedBonds) if (g) g.SetActive(visible);
+    }
+
+    /// <summary>
+    /// 현재 스폰된 원자/결합 전체를 알파 페이드시킨다 (예: CFTR corrector 성공 시
+    /// 8EJ1→8EIQ 구조 스왑을 "뚝 끊기지 않게" 보여주는 연출). ThermalStabilityController의
+    /// 알파 처리와 같은 MaterialPropertyBlock 기법을 RuntimeMaterials.Transparent로 공유한다.
+    /// LoadStructure를 부르는 쪽(예: CftrRescueController)이
+    /// FadeOutRoutine → LoadStructure → (OnLoaded 후) FadeInRoutine 순으로 조합해서 쓴다.
+    /// </summary>
+    public IEnumerator FadeOutRoutine(float duration) { yield return FadeAllRoutine(1f, 0f, duration); }
+    public IEnumerator FadeInRoutine(float duration) { yield return FadeAllRoutine(0f, 1f, duration); }
+    public void FadeIn(float duration) { StartCoroutine(FadeInRoutine(duration)); }
+
+    private IEnumerator FadeAllRoutine(float from, float to, float duration)
+    {
+        var renderers = new List<Renderer>();
+        foreach (var g in _spawnedAtoms) { if (!g) continue; var r = g.GetComponent<Renderer>(); if (r) renderers.Add(r); }
+        foreach (var g in _spawnedBonds) { if (!g) continue; var r = g.GetComponent<Renderer>(); if (r) renderers.Add(r); }
+        if (renderers.Count == 0) yield break;
+
+        foreach (var r in renderers) r.sharedMaterial = RuntimeMaterials.Transparent;
+
+        var mpb = new MaterialPropertyBlock();
+        void ApplyAlpha(float alpha)
+        {
+            foreach (var r in renderers)
+            {
+                if (!r) continue;
+                r.GetPropertyBlock(mpb);
+                Color c = mpb.GetColor("_BaseColor");
+                if (c.a <= 0f) c = new Color(0.75f, 0.78f, 0.82f, 1f); // 색이 안 잡혀 있으면 은은한 회색
+                c.a = alpha;
+                mpb.SetColor("_BaseColor", c);
+                r.SetPropertyBlock(mpb);
+            }
+        }
+
+        ApplyAlpha(from);
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            ApplyAlpha(Mathf.Lerp(from, to, Mathf.Clamp01(elapsed / duration)));
+            yield return null;
+        }
+        ApplyAlpha(to);
     }
 
     /// <summary>

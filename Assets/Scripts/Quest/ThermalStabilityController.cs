@@ -210,22 +210,22 @@ public class ThermalStabilityController : MonoBehaviour
 
             if (_stabilized)
             {
-                hud.SetStability(0.9f, "IMPROVED");
-                hud.SetWobble(0.08f, "LOW");
+                hud.SetStability(0.9f, "좋아짐");
+                hud.SetWobble(0.08f, "적음");
                 hud.ShowMessage(Mathf.Abs(CurrentCelsius - physiologicalCelsius) < 0.5f
-                    ? "Mutant-selective stabilization holds at physiological temperature."
+                    ? "이 변이 자리에만 맞는 약 덕분에 체온에서도 안정적이에요!"
                     : string.Empty);
             }
             else
             {
                 // wobble이 클수록 안정성은 낮다 — 같은 정규화 값을 뒤집어서 보여준다.
-                string stabilityLabel = Normalized01 < 0.15f ? "OK" : Normalized01 < 0.55f ? "LOW" : "VERY LOW";
+                string stabilityLabel = Normalized01 < 0.15f ? "양호" : Normalized01 < 0.55f ? "낮음" : "매우 낮음";
                 hud.SetStability(1f - Normalized01, stabilityLabel);
-                string wobbleLabel = Normalized01 < 0.15f ? "LOW" : Normalized01 < 0.55f ? "MODERATE" : "HIGH";
+                string wobbleLabel = Normalized01 < 0.15f ? "적음" : Normalized01 < 0.55f ? "보통" : "심함";
                 hud.SetWobble(Normalized01, wobbleLabel);
 
                 hud.ShowMessage(Mathf.Abs(CurrentCelsius - physiologicalCelsius) < 0.5f
-                    ? "Y220C is substantially less stable than wild-type p53 at physiological temperature."
+                    ? "Y220C 변이는 정상 p53보다 체온에서 훨씬 불안정해요."
                     : string.Empty);
             }
         }
@@ -512,7 +512,7 @@ public class ThermalStabilityController : MonoBehaviour
 
         Text label = CreateText(rootGo.transform, "Label", 22, FontStyle.Bold, new Color(0.85f, 0.95f, 1f));
         label.alignment = TextAnchor.UpperCenter;
-        label.text = "Temperature";
+        label.text = "온도";
         var labelRect = (RectTransform)label.transform;
         labelRect.anchorMin = new Vector2(0f, 1f); labelRect.anchorMax = new Vector2(1f, 1f);
         labelRect.pivot = new Vector2(0.5f, 1f);

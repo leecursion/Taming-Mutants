@@ -123,10 +123,15 @@ public class CameraTransitionDirector : MonoBehaviour
     {
         StopRunning();
 
-        foreach (KeyValuePair<QuestLevel, LevelStage> pair in _stages)
-            pair.Value.SetActive(pair.Key == level, invokeEvents: false);
-
         LevelStage target = Find(level);
+
+        // 목표 무대를 마지막에 켠다. 예: Level2~4가 같은 ProteinAnchor를 contentRoot로 공유하는
+        // 경우, 다른 레벨을 먼저 꺼버리면(그 안의 렌더러가 공유 오브젝트 소속이라) 목표 무대를
+        // 먼저 켜도 나중에 도는 다른 레벨의 SetActive(false)가 그걸 도로 꺼버린다.
+        foreach (KeyValuePair<QuestLevel, LevelStage> pair in _stages)
+            if (pair.Key != level) pair.Value.SetActive(false, invokeEvents: false);
+
+        target?.SetActive(true, invokeEvents: false);
         if (target != null) ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
 
         CurrentLevel = level;
@@ -161,7 +166,7 @@ public class CameraTransitionDirector : MonoBehaviour
 
         if (settings.style == CameraMotionStyle.Cut || settings.duration <= 0f)
         {
-            previous?.SetActive(false);
+            if (!SharesContent(previous, target)) previous?.SetActive(false);
             target.SetActive(true);
             ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
             FinishTransition(to);
@@ -210,7 +215,8 @@ public class CameraTransitionDirector : MonoBehaviour
             if (!hidden && raw >= settings.hidePreviousAt)
             {
                 hidden = true;
-                if (previous != null && previous != target) previous.SetActive(false);
+                if (previous != null && previous != target && !SharesContent(previous, target))
+                    previous.SetActive(false);
             }
 
             OnTransitionProgress?.Invoke(raw);
@@ -218,7 +224,8 @@ public class CameraTransitionDirector : MonoBehaviour
         }
 
         if (!revealed) target.SetActive(true);
-        if (!hidden && previous != null && previous != target) previous.SetActive(false);
+        if (!hidden && previous != null && previous != target && !SharesContent(previous, target))
+            previous.SetActive(false);
 
         ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
         FinishTransition(to);
@@ -308,6 +315,18 @@ public class CameraTransitionDirector : MonoBehaviour
     private LevelStage Find(QuestLevel level)
     {
         return _stages.TryGetValue(level, out LevelStage stage) ? stage : null;
+    }
+
+    /// <summary>
+    /// 두 무대가 같은 contentRoot를 가리키는지(예: Level2~4가 모두 ProteinAnchor_Main을 쓰는 경우).
+    ///
+    /// 도착 무대를 켠(revealAt) 뒤 출발 무대를 끄는(hidePreviousAt) 두 시점이 같은 오브젝트를
+    /// 가리키면, 나중에 도는 "끄기"가 방금 켠 상태를 그대로 덮어써 버린다. 겹치는 콘텐츠는
+    /// 애초에 끌 대상이 아니다 — 계속 보여야 할 대상을 잠깐 보여줬다 도로 숨기는 셈이 된다.
+    /// </summary>
+    private static bool SharesContent(LevelStage a, LevelStage b)
+    {
+        return a != null && b != null && a.contentRoot != null && a.contentRoot == b.contentRoot;
     }
 
     private void SetInputLocked(bool locked)

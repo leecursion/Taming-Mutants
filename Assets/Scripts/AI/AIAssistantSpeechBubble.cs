@@ -66,13 +66,13 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     };
 
     [Header("본문 폭")]
-    [Tooltip("한 줄에 들어갈 한글 글자 수 목표. 이 값과 본문 글자 크기로 말풍선 폭을 정한다.\n" +
-             "폭을 미터로 적어두면 글자 크기를 바꿀 때마다 줄바꿈이 어긋나므로 비율로 잡는다.\n" +
-             "0 이하면 씬에 저장된 폭을 그대로 쓴다.")]
-    public int targetCharactersPerLine = 20;
-
     [Tooltip("말풍선이 줄어들 수 있는 하한(한글 글자 수). 짧은 대사에서 패널이 헤더보다 좁아지지 않게 막는다.")]
     public int minimumCharactersPerLine = 10;
+
+    [Tooltip("말풍선 최대 폭을 화면 폭의 이 비율로 정한다. (예: 1/3이면 화면 오른쪽 3분의 1만큼)\n" +
+             "constantApparentSize 덕분에 카메라 거리와 무관하게 항상 같은 화면 비율을 차지한다.")]
+    [Range(0.05f, 1f)]
+    public float screenWidthFraction = 1f / 3f;
 
     [Tooltip("어절(띄어쓰기) 단위로 줄을 끊는다. Unity 기본 Text는 한글을 CJK로 보고 글자 단위로 " +
              "아무 데서나 끊어 '정밀검 / 사실'처럼 단어 한가운데가 갈라진다.")]
@@ -185,7 +185,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     /// </summary>
     private void ApplyBubbleWidth()
     {
-        if (targetCharactersPerLine <= 0 || bubbleRect == null || label == null) return;
+        if (screenWidthFraction <= 0f || bubbleRect == null || label == null) return;
 
         SetBubbleWidth(MaxBubbleWidth());
 
@@ -200,7 +200,27 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     }
 
     /// <summary>말풍선이 커질 수 있는 한계. 줄바꿈은 이 폭을 기준으로 계산한다.</summary>
-    private float MaxBubbleWidth() => label.fontSize * targetCharactersPerLine + HorizontalPadding();
+    private float MaxBubbleWidth() => ScreenWidthInCanvasUnits() * screenWidthFraction;
+
+    /// <summary>
+    /// 기준 거리(referenceDistance)에서 카메라 시야 폭을 캔버스 단위로 환산한 값.
+    ///
+    /// constantApparentSize가 켜져 있으면 캔버스 단위 하나가 화면에서 차지하는 비율은
+    /// 카메라 거리와 무관하게 항상 같다(UpdateCanvasScale 참고). 그래서 이 값을 기준 거리
+    /// 한 번만으로 구해도, 실제로 어느 거리에서 보든 "화면 전체 폭 = 몇 캔버스 단위"인지
+    /// 정확히 맞는다. UpdateTextSharpness의 원근/직교 분기와 같은 계산을 재사용한다.
+    /// </summary>
+    private float ScreenWidthInCanvasUnits()
+    {
+        Camera cam = ResolveCamera();
+        if (cam == null || metersPerCanvasUnit <= 0f) return 0f;
+
+        float visibleWidthAtReference = cam.orthographic
+            ? cam.orthographicSize * 2f * cam.aspect
+            : 2f * referenceDistance * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad) * cam.aspect;
+
+        return visibleWidthAtReference / metersPerCanvasUnit;
+    }
 
     /// <summary>말풍선이 줄어들 수 있는 하한. 헤더("AI CO-SCIENTIST")가 눌리지 않을 만큼은 남겨야 한다.</summary>
     private float MinBubbleWidth() => label.fontSize * minimumCharactersPerLine + HorizontalPadding();
@@ -470,14 +490,22 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         canvasScaler.dynamicPixelsPerUnit = desired;
     }
 
-    /// <summary>보정에 쓸 카메라까지의 거리. 하한/상한을 물려 크기가 폭주하지 않게 한다.</summary>
+    /// <summary>
+    /// 보정에 쓸 카메라까지의 거리. 하한/상한을 물려 크기가 폭주하지 않게 한다.
+    ///
+    /// 직선(유클리드) 거리가 아니라 카메라 정면 축 방향으로의 깊이를 쓴다. 원근 투영에서
+    /// 화면상 크기를 결정하는 건 깊이뿐이라, 화면 구석(비서는 기본적으로 우측 상단에 뜬다 —
+    /// AIAssistantFollower 참고)에 있는 물체는 직선 거리가 깊이보다 길어 "실제보다 멀리 있다"고
+    /// 착각하게 된다. 그러면 이 배율을 쓰는 UpdateCanvasScale과 ScreenWidthInCanvasUnits가
+    /// 필요 이상으로 크게 키워, 화면 비율 목표(screenWidthFraction)보다 커 보인다.
+    /// </summary>
     private float CameraDistance()
     {
         Camera cam = ResolveCamera();
         if (cam == null) return referenceDistance;
 
-        float distance = Vector3.Distance(cam.transform.position, transform.position);
-        return Mathf.Clamp(distance, distanceClamp.x, distanceClamp.y);
+        float depth = Vector3.Dot(transform.position - cam.transform.position, cam.transform.forward);
+        return Mathf.Clamp(depth, distanceClamp.x, distanceClamp.y);
     }
 
     /// <summary>빌보드에 쓰는 lookTarget이 곧 카메라인 경우가 대부분이라 거기서 먼저 찾는다.</summary>

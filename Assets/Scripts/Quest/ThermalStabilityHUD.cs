@@ -40,8 +40,8 @@ public class ThermalStabilityHUD : MonoBehaviour
     private void Awake()
     {
         BuildUI();
-        SetStability(0f, "LOW");
-        SetWobble(0f, "—");
+        SetStability(0f, "낮음");
+        SetWobble(0f, "측정 전");
         SetP53Quantity(0f);
         SetDnaBindingCompetent(false);
         HideWarning();
@@ -56,7 +56,7 @@ public class ThermalStabilityHUD : MonoBehaviour
 
     public void SetTemperature(float celsius)
     {
-        if (_tempText != null) _tempText.text = $"Temperature: {celsius:0}°C";
+        if (_tempText != null) _tempText.text = $"온도: {celsius:0}°C";
     }
 
     public void SetStability(float value01, string label)
@@ -67,7 +67,7 @@ public class ThermalStabilityHUD : MonoBehaviour
             _stabilityFill.fillAmount = value01;
             _stabilityFill.color = Color.Lerp(badColor, goodColor, value01);
         }
-        if (_stabilityLabel != null) _stabilityLabel.text = $"Stability: {label}";
+        if (_stabilityLabel != null) _stabilityLabel.text = $"안정성: {label}";
     }
 
     public void SetWobble(float value01, string label)
@@ -78,7 +78,7 @@ public class ThermalStabilityHUD : MonoBehaviour
             _wobbleFill.fillAmount = value01;
             _wobbleFill.color = Color.Lerp(goodColor, badColor, value01); // 높을수록(많이 흔들릴수록) 나쁜색
         }
-        if (_wobbleLabel != null) _wobbleLabel.text = $"Wobble: {label}";
+        if (_wobbleLabel != null) _wobbleLabel.text = $"흔들림: {label}";
     }
 
     public void SetP53Quantity(float value01)
@@ -89,7 +89,7 @@ public class ThermalStabilityHUD : MonoBehaviour
     public void SetDnaBindingCompetent(bool competent)
     {
         if (_dnaDot != null) _dnaDot.color = competent ? goodColor : new Color(1f, 1f, 1f, 0.25f);
-        if (_dnaLabel != null) _dnaLabel.text = competent ? "DNA-binding: competent" : "DNA-binding: none";
+        if (_dnaLabel != null) _dnaLabel.text = competent ? "DNA 결합: 가능" : "DNA 결합: 불가능";
     }
 
     public void ShowWarning(string text)
@@ -149,7 +149,7 @@ public class ThermalStabilityHUD : MonoBehaviour
 
         Text title = CreateText(rootGo.transform, "Title", 22, FontStyle.Bold,
             new Color(accentColor.r, accentColor.g, accentColor.b, 0.95f));
-        title.text = "THERMAL STABILITY MONITOR";
+        title.text = "온도와 안정성 화면";
 
         _tempText = CreateText(rootGo.transform, "Temp", 20, FontStyle.Normal, textColor);
 
@@ -167,7 +167,7 @@ public class ThermalStabilityHUD : MonoBehaviour
         p53Layout.childControlWidth = true;
         p53Layout.childControlHeight = true;
         Text p53Label = CreateText(p53Row.transform, "P53Label", 18, FontStyle.Normal, textColor);
-        p53Label.text = "p53 quantity";
+        p53Label.text = "p53 단백질 양";
         var p53LabelElement = p53Label.gameObject.AddComponent<LayoutElement>();
         p53LabelElement.preferredWidth = 150f;
         _p53Fill = CreateBar(p53Row.transform, "P53Bar");

@@ -90,7 +90,7 @@ public class P53QuestDirector : MonoBehaviour
         yield return TetramerConvergeRoutine();
 
         if (hud != null)
-            hud.ShowMessage("DBD stabilization -> DNA-binding competence -> p53 transcriptional program restoration");
+            hud.ShowMessage("단백질이 안정되면 → DNA와 다시 결합할 수 있고 → p53이 원래 하던 일(암 억제)을 다시 할 수 있어요.");
     }
 
     // --- 1) 37°C Before/After 재검증 ---
@@ -102,11 +102,11 @@ public class P53QuestDirector : MonoBehaviour
         thermal.SetTemperature(thermal.physiologicalCelsius);
 
         thermal.SetStabilized(false);
-        hud.ShowMessage("BEFORE — Y220C  ·  Stability: LOW  ·  Wobble: HIGH");
+        hud.ShowMessage("약 사용 전 — Y220C · 안정성: 낮음 · 흔들림: 심함");
         yield return new WaitForSeconds(beforeHoldSeconds);
 
         thermal.SetStabilized(true);
-        hud.ShowMessage("AFTER — Y220C + Rezatapopt-like stabilizer  ·  Stability: IMPROVED  ·  Wobble: LOW");
+        hud.ShowMessage("약 사용 후 — Y220C + 안정화제 · 안정성: 좋아짐 · 흔들림: 적음");
         yield return new WaitForSeconds(afterHoldSeconds);
     }
 

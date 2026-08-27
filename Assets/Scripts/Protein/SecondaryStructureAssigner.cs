@@ -2,142 +2,234 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Cα 트레이스만으로 이차구조(알파나선 / 베타가닥 / 루프)를 추정한다.
+/// 주쇄 좌표에서 이차구조(알파나선 / 베타가닥 / 루프)를 DSSP(Kabsch &amp; Sander, 1983) 방식으로
+/// 판정한다. PDB/AlphaFold 구조 페이지에 표시되는 이차구조가 바로 이 알고리즘의 출력이므로,
+/// 여기서 나오는 나선/가닥 구간은 추정이 아니라 원 데이터가 실제로 말하는 구간이다.
 ///
-/// 이 프로젝트의 구조 JSON(AlphaFold 파싱 결과)에는 DSSP 같은 사전 계산된 이차구조 정보가
-/// 없다. 그래서 P-SEA(Labesse &amp; Mornon, 1997)처럼 Cα 좌표만으로 판단하는 방식을 단순화해 쓴다:
-/// 알파나선은 Cα(i)-Cα(i+3) 거리가 좁고(~5.0-5.7Å) 네 점(i-1..i+2)의 가상 이면각이 -40~-60도
-/// 부근으로 매우 규칙적이다. 베타가닥은 거리가 넓게 펴져 있고(~8-10.5Å) 이면각이 ±160도 부근이다.
+/// 절차는 원 논문 그대로다.
+///  1. 아마이드 수소 H를 N 위에 놓는다 — 앞 잔기의 O→C 방향으로 1.0 Å.
+///  2. C=O(i)와 N–H(j) 사이 정전기 에너지를 재고, -0.5 kcal/mol보다 낮으면 수소결합으로 본다.
+///  3. 4-turn이 연달아 두 번 나오면 알파나선(H), 3-turn이면 3_10 나선(G), 5-turn이면 파이나선(I).
+///  4. 두 잔기가 평행/역평행 브리지 조건을 만족하면 베타 가닥(E).
 ///
-/// 임계값은 감으로 정한 문헌값이 아니라, 이 프로젝트의 KRAS 구조(structures/P01116.json)에서
-/// 실제로 위 두 값을 계산해 실측한 뒤(퀘스트 데이터에 이미 있는 Switch-II/α3 헬릭스 구간을
-/// 정답으로 삼아 대조) 잡았다. 완벽한 DSSP 대체는 아니지만, 리본 단계에서 "전체 폴드에
-/// 나선/판/루프가 어떻게 배치돼 있는지"를 보여주는 교육 목적에는 충분하다.
+/// 반환값은 <see cref="BackboneChain.Residues"/>와 같은 길이/순서다.
+///
+/// 이전에는 Cα끼리의 거리와 가상 이면각만 보는 P-SEA 계열 근사를 썼는데, 그 방식은
+/// 나선/가닥 경계를 한두 잔기씩 어긋나게 잡고 루프의 우연한 규칙성까지 가닥으로 오인해서
+/// 리본이 실제 폴드와 다른 모양으로 나왔다. 주쇄 원자가 JSON에 이미 다 들어 있으므로
+/// 근사를 쓸 이유가 없다.
 /// </summary>
 public static class SecondaryStructureAssigner
 {
     public enum Type { Loop, Helix, Strand }
 
-    // StructureLevelController.ExtractCaTrace가 넘기는 위치는 옹스트롬 좌표에 0.1을 곱한
-    // 씬 단위(ProteinLoader.SpawnStructure와 동일 스케일)다. 아래 거리 임계값은 실측 옹스트롬
-    // 값이므로, 트레이스에서 잰 거리를 이 상수로 나눠 옹스트롬으로 되돌린 뒤 비교해야 한다.
-    // 이걸 빼먹으면 모든 거리가 임계값보다 한 자릿수 작게 나와 전부 Loop로만 분류된다.
-    private const float SceneUnitsPerAngstrom = 0.1f;
+    // E = q1*q2*(1/r(ON) + 1/r(CH) - 1/r(OH) - 1/r(CN)) * f,  q1 = 0.42e, q2 = 0.20e, f = 332
+    private const float CouplingConstant = 0.42f * 0.20f * 332f;
+    private const float HBondEnergyCutoff = -0.5f;  // kcal/mol
+    private const float MinPairDistance = 0.5f;     // Å — 좌표 이상으로 1/r이 폭주하는 것 방어
+    private const float AmideHydrogenBondLength = 1.0f; // Å, N–H
 
-    private const float HelixD3Min = 4.7f;
-    private const float HelixD3Max = 6.6f;
-    private const float HelixTorsionMin = -100f;
-    private const float HelixTorsionMax = -15f;
-
-    private const float StrandD3Min = 7.3f;
-    private const float StrandD3Max = 11.5f;
-    private const float StrandTorsionPositiveMin = 90f;   // 펴진 형태는 이면각이 +90~+180 부근이거나
-    private const float StrandTorsionNegativeMax = -150f; // -180 가까이(랩어라운드)로도 나타난다
-
-    // 한두 잔기짜리 우연한 일치는 실제 이차구조가 아니라 잡음일 가능성이 높다.
-    // DSSP도 최소 길이 미만은 이차구조로 보지 않는 것과 같은 취지.
-    private const int MinHelixRun = 3;
-    private const int MinStrandRun = 2;
+    // 이보다 Cα가 멀면 주쇄끼리 수소결합할 수 없다. n² 순회에서 대부분을 걷어내는 필터이자
+    // 브리지 후보 쌍을 추리는 기준.
+    private const float MaxCaContactDistance = 9f;  // Å
 
     /// <summary>
-    /// trace: res_id 오름차순으로 정렬된 (res_id, 로컬 위치) Cα 트레이스
-    /// (StructureLevelController.ExtractCaTrace와 같은 형식). 반환값은 trace와 같은 길이.
+    /// 홀로 남은 브리지 잔기 하나(DSSP의 'B')는 리본에서 화살표 한 조각으로 튀어 보일 뿐
+    /// 시트로 읽히지 않는다. 사다리(ladder)를 이루는 길이 2 이상만 가닥으로 그린다.
     /// </summary>
-    public static Type[] Assign(List<KeyValuePair<int, Vector3>> trace)
+    private const int MinStrandRun = 2;
+
+    public static Type[] Assign(BackboneChain chain)
     {
-        int n = trace.Count;
-        var raw = new Type[n];
+        int n = chain.Count;
+        var result = new Type[n];
+        if (n == 0) return result;
 
-        for (int i = 0; i < n; i++)
-            raw[i] = Classify(trace, i);
+        Vector3[] hydrogens = PlaceAmideHydrogens(chain);
+        HashSet<int> bonds = FindHydrogenBonds(chain, hydrogens, out List<Vector2Int> contacts);
 
-        return SmoothShortRuns(raw);
-    }
+        bool HBond(int acceptor, int donor) =>
+            acceptor >= 0 && donor >= 0 && acceptor < n && donor < n &&
+            bonds.Contains(acceptor * n + donor);
 
-    private static Type Classify(List<KeyValuePair<int, Vector3>> trace, int i)
-    {
-        float? d3 = Distance(trace, i, 3);
-        float? torsion = Torsion(trace, i);
+        var helix = new bool[n];
+        var strand = new bool[n];
 
-        if (d3.HasValue && torsion.HasValue &&
-            d3.Value >= HelixD3Min && d3.Value <= HelixD3Max &&
-            torsion.Value >= HelixTorsionMin && torsion.Value <= HelixTorsionMax)
-            return Type.Helix;
+        // --- 나선: n-turn 두 개가 겹치면 최소 나선 하나 ---
+        // 4-turn(i)와 4-turn(i+1)이 함께 있으면 i+1..i+4가 알파나선이다. 3_10(3-turn)과
+        // 파이(5-turn)도 같은 규칙이며, 카툰에서는 셋 다 나선 리본으로 그린다.
+        MarkHelixTurns(chain, HBond, helix, turn: 4);
+        MarkHelixTurns(chain, HBond, helix, turn: 3);
+        MarkHelixTurns(chain, HBond, helix, turn: 5);
 
-        if (d3.HasValue && torsion.HasValue &&
-            d3.Value >= StrandD3Min && d3.Value <= StrandD3Max &&
-            (torsion.Value >= StrandTorsionPositiveMin || torsion.Value <= StrandTorsionNegativeMax))
-            return Type.Strand;
-
-        return Type.Loop;
-    }
-
-    // 짧은 조각은 루프로 되돌린다. 리본 색이 한두 잔기마다 깜빡이며 튀어 보이는 것도 막아준다.
-    private static Type[] SmoothShortRuns(Type[] raw)
-    {
-        var result = (Type[])raw.Clone();
-        int n = result.Length;
-
-        int i = 0;
-        while (i < n)
+        // --- 베타 브리지 ---
+        foreach (Vector2Int pair in contacts)
         {
-            Type t = result[i];
-            int j = i;
-            while (j < n && result[j] == t) j++;
+            int i = pair.x, j = pair.y;
+            if (!HasNeighbors(chain, i) || !HasNeighbors(chain, j)) continue;
 
-            int minRun = t == Type.Helix ? MinHelixRun : t == Type.Strand ? MinStrandRun : 0;
-            if (t != Type.Loop && (j - i) < minRun)
-                for (int k = i; k < j; k++) result[k] = Type.Loop;
+            bool parallel = (HBond(i - 1, j) && HBond(j, i + 1)) ||
+                            (HBond(j - 1, i) && HBond(i, j + 1));
+            bool antiparallel = (HBond(i, j) && HBond(j, i)) ||
+                                (HBond(i - 1, j + 1) && HBond(j - 1, i + 1));
 
-            i = j;
+            if (!parallel && !antiparallel) continue;
+            strand[i] = true;
+            strand[j] = true;
         }
 
+        // DSSP의 우선순위도 나선이 먼저다 — 나선 양끝은 브리지 조건에 걸리는 일이 있는데,
+        // 그걸 가닥으로 그리면 나선 중간에 화살표가 박힌 것처럼 보인다.
+        for (int i = 0; i < n; i++)
+            result[i] = helix[i] ? Type.Helix : strand[i] ? Type.Strand : Type.Loop;
+
+        DropShortStrandRuns(result, chain);
         return result;
     }
 
     /// <summary>
-    /// 서열상 delta만큼 떨어진 잔기의 위치. res_id가 실제로 i+delta여야만(사슬이 끊기지 않아야만)
-    /// 값을 반환한다 — 리스트 인덱스만 보고 건너뛰면 결측 잔기 경계에서 엉뚱한 값이 나온다.
+    /// n-turn(i) = C=O(i)와 N–H(i+n)의 수소결합. 연달아 두 개면 그 사이 잔기가 나선이다.
     /// </summary>
-    private static bool TryGet(List<KeyValuePair<int, Vector3>> trace, int i, int delta, out Vector3 pos)
+    private static void MarkHelixTurns(BackboneChain chain, System.Func<int, int, bool> hBond,
+                                       bool[] helix, int turn)
     {
-        pos = default;
-        int j = i + delta;
-        if (i < 0 || i >= trace.Count || j < 0 || j >= trace.Count) return false;
-        if (trace[j].Key != trace[i].Key + delta) return false;
+        for (int i = 0; i + turn + 1 < chain.Count; i++)
+        {
+            if (!chain.SameFragment(i, i + turn + 1)) continue;
+            if (!hBond(i, i + turn) || !hBond(i + 1, i + turn + 1)) continue;
 
-        pos = trace[j].Value;
-        return true;
+            for (int k = i + 1; k <= i + turn; k++) helix[k] = true;
+        }
     }
 
-    private static float? Distance(List<KeyValuePair<int, Vector3>> trace, int i, int delta)
+    /// <summary>브리지 판정은 i-1, i, i+1을 모두 쓰므로 서열상 양옆이 이어져 있어야 한다.</summary>
+    private static bool HasNeighbors(BackboneChain chain, int i)
     {
-        if (!TryGet(trace, i, 0, out Vector3 a) || !TryGet(trace, i, delta, out Vector3 b)) return null;
-        return Vector3.Distance(a, b) / SceneUnitsPerAngstrom;
+        return i - 1 >= 0 && i + 1 < chain.Count &&
+               chain.SameFragment(i - 1, i) && chain.SameFragment(i, i + 1);
     }
 
-    /// <summary>잔기 i의 가상 이면각 — 네 점 Cα(i-1), Cα(i), Cα(i+1), Cα(i+2)로 정의한다.</summary>
-    private static float? Torsion(List<KeyValuePair<int, Vector3>> trace, int i)
+    /// <summary>
+    /// 아마이드 수소를 N 위에 놓는다. 원 논문과 같이 앞 잔기의 카보닐 O→C 방향으로 1.0 Å —
+    /// 펩타이드 결합이 평면이라 이 방향이 실제 N–H와 거의 일치한다.
+    /// 조각의 첫 잔기와 프롤린은 줄 수소가 없으므로 공여자에서 빠진다(NaN으로 표시).
+    /// </summary>
+    private static Vector3[] PlaceAmideHydrogens(BackboneChain chain)
     {
-        if (!TryGet(trace, i, -1, out Vector3 p0)) return null;
-        if (!TryGet(trace, i, 0, out Vector3 p1)) return null;
-        if (!TryGet(trace, i, 1, out Vector3 p2)) return null;
-        if (!TryGet(trace, i, 2, out Vector3 p3)) return null;
-        return DihedralDegrees(p0, p1, p2, p3);
+        var hydrogens = new Vector3[chain.Count];
+        for (int i = 0; i < chain.Count; i++)
+        {
+            BackboneChain.Residue res = chain.Residues[i];
+            bool canDonate = res.hasN && res.resName != "PRO" &&
+                             i > 0 && chain.SameFragment(i - 1, i) &&
+                             chain.Residues[i - 1].hasC && chain.Residues[i - 1].hasO;
+
+            if (!canDonate)
+            {
+                hydrogens[i] = new Vector3(float.NaN, float.NaN, float.NaN);
+                continue;
+            }
+
+            BackboneChain.Residue prev = chain.Residues[i - 1];
+            Vector3 dir = (prev.c - prev.o).normalized;
+            hydrogens[i] = res.n + dir * (AmideHydrogenBondLength * BackboneChain.SceneUnitsPerAngstrom);
+        }
+        return hydrogens;
     }
 
-    private static float DihedralDegrees(Vector3 p0, Vector3 p1, Vector3 p2, Vector3 p3)
+    /// <summary>
+    /// 공여자(N–H)마다 에너지가 가장 낮은 두 수용자(C=O)만 결합으로 인정한다 — DSSP와 같은 규칙으로,
+    /// 임계값만 보고 전부 인정하면 한 N–H가 세 곳 이상과 결합한 것처럼 되어 가짜 나선/시트가 생긴다.
+    /// 반환값은 acceptor*n + donor 키 집합이고, contacts에는 브리지 후보(서열상 3 이상 떨어진
+    /// Cα 근접 쌍)를 함께 담아 준다.
+    /// </summary>
+    private static HashSet<int> FindHydrogenBonds(BackboneChain chain, Vector3[] hydrogens,
+                                                  out List<Vector2Int> contacts)
     {
-        Vector3 b0 = p0 - p1;
-        Vector3 b1 = p2 - p1;
-        Vector3 b2 = p3 - p2;
+        int n = chain.Count;
+        var bonds = new HashSet<int>();
+        contacts = new List<Vector2Int>();
 
-        Vector3 n1 = Vector3.Cross(b0, b1);
-        Vector3 n2 = Vector3.Cross(p1 - p2, b2);
-        Vector3 m1 = Vector3.Cross(n1, b1.normalized);
+        float maxCa = MaxCaContactDistance * BackboneChain.SceneUnitsPerAngstrom;
+        float maxCaSqr = maxCa * maxCa;
 
-        float x = Vector3.Dot(n1, n2);
-        float y = Vector3.Dot(m1, n2);
-        return Mathf.Atan2(y, x) * Mathf.Rad2Deg;
+        for (int donor = 0; donor < n; donor++)
+        {
+            if (float.IsNaN(hydrogens[donor].x)) continue;
+
+            BackboneChain.Residue d = chain.Residues[donor];
+            float bestEnergy = 0f, secondEnergy = 0f;
+            int bestIndex = -1, secondIndex = -1;
+
+            for (int acceptor = 0; acceptor < n; acceptor++)
+            {
+                // 서열상 바로 옆 잔기와는 기하적으로 늘 가까워 의미 있는 결합이 아니다.
+                if (Mathf.Abs(acceptor - donor) < 2 && chain.SameFragment(acceptor, donor)) continue;
+
+                BackboneChain.Residue a = chain.Residues[acceptor];
+                if (!a.hasC || !a.hasO) continue;
+                if ((a.ca - d.ca).sqrMagnitude > maxCaSqr) continue;
+
+                float energy = HBondEnergy(a.c, a.o, d.n, hydrogens[donor]);
+                if (energy < bestEnergy)
+                {
+                    secondEnergy = bestEnergy; secondIndex = bestIndex;
+                    bestEnergy = energy; bestIndex = acceptor;
+                }
+                else if (energy < secondEnergy)
+                {
+                    secondEnergy = energy; secondIndex = acceptor;
+                }
+            }
+
+            if (bestIndex >= 0 && bestEnergy < HBondEnergyCutoff) bonds.Add(bestIndex * n + donor);
+            if (secondIndex >= 0 && secondEnergy < HBondEnergyCutoff) bonds.Add(secondIndex * n + donor);
+        }
+
+        for (int i = 0; i < n; i++)
+        {
+            for (int j = i + 3; j < n; j++)
+            {
+                if ((chain.Residues[i].ca - chain.Residues[j].ca).sqrMagnitude > maxCaSqr) continue;
+                contacts.Add(new Vector2Int(i, j));
+            }
+        }
+
+        return bonds;
+    }
+
+    private static float HBondEnergy(Vector3 c, Vector3 o, Vector3 n, Vector3 h)
+    {
+        float rON = Angstroms(o, n);
+        float rCH = Angstroms(c, h);
+        float rOH = Angstroms(o, h);
+        float rCN = Angstroms(c, n);
+
+        if (rON < MinPairDistance || rCH < MinPairDistance ||
+            rOH < MinPairDistance || rCN < MinPairDistance) return 0f;
+
+        return CouplingConstant * (1f / rON + 1f / rCH - 1f / rOH - 1f / rCN);
+    }
+
+    private static float Angstroms(Vector3 a, Vector3 b)
+    {
+        return Vector3.Distance(a, b) / BackboneChain.SceneUnitsPerAngstrom;
+    }
+
+    private static void DropShortStrandRuns(Type[] types, BackboneChain chain)
+    {
+        int i = 0;
+        while (i < types.Length)
+        {
+            if (types[i] != Type.Strand) { i++; continue; }
+
+            int j = i;
+            while (j < types.Length && types[j] == Type.Strand && chain.SameFragment(i, j)) j++;
+
+            if (j - i < MinStrandRun)
+                for (int k = i; k < j; k++) types[k] = Type.Loop;
+
+            i = j;
+        }
     }
 }

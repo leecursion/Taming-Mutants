@@ -10,6 +10,7 @@
   "entrance_offset": 0.85,
   "helix_regions": [
     {"label": "NBD1 F508 인접 루프", "start_res_id": 495, "end_res_id": 520},
-    {"label": "NBD1 안정화 Helix", "start_res_id": 525, "end_res_id": 545}
+    {"label": "NBD1 안정화 Helix", "start_res_id": 525, "end_res_id": 545},
+    {"label": "TMD2 ICL4 interface", "start_res_id": 1030, "end_res_id": 1085}
   ]
 }

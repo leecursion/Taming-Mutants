@@ -11,9 +11,12 @@ using UnityEngine.Networking;
 /// 칸을 둘러싸는 와이어프레임 박스는 없고, 대신 각 칸 위에서 비추는 스포트라이트와
 /// 바닥 글로우가 "빛으로 자리를 표시한 전시대" 느낌을 낸다(CompoundSlot 참고).
 ///
-/// 배치: 단백질 원자들의 실제 월드 경계(bounds)를 측정해서
-/// 카메라 시선 기준 "구조 바로 왼쪽 옆 + 상단 높이 일치" 위치에 놓고,
-/// 사용자 중앙 시선 쪽으로 diagonalYaw만큼 틀어 사선 배치한다.
+/// 배치(기본, placeRelativeToCamera=true): 카메라 기준 고정 오프셋(cameraOffset)으로
+/// "화면 왼쪽 중앙" 근처에 사선으로 놓는다(PlaceBesideUser 참고). 단백질 구조를 실측해
+/// "구조 옆"에 붙이는 방식도 코드는 남아 있지만(placeRelativeToCamera=false), 사건마다
+/// 단백질 크기·아미노산 단계에서 선택한 구간의 위치가 달라 화면상 패널 위치가 들쭉날쭉하고
+/// 화면 밖으로 잘리는 문제가 반복돼 기본값에서 뺐다 — [[compound-panel-placement-final]].
+/// 사용자 중앙 시선 쪽으로 diagonalYaw만큼 틀어 사선 배치하는 것은 두 방식 모두 동일하다.
 ///
 /// 표시 시점: levelController가 연결돼 있으면 아미노산(원자) 레벨에서만 패널이 보인다.
 ///
@@ -60,9 +63,11 @@ public class CompoundSelectionPanel : MonoBehaviour
     [Header("자동 배치 (단백질 실측 경계 기준, 시선 왼쪽 옆 + 상단 정렬 + 사선)")]
     [Tooltip("켜면 단백질 로드/레벨 전환 시 자동 배치")]
     public bool autoPlace = true;
-    [Tooltip("켜면 단백질 경계 대신 사용자 시야(카메라) 기준으로 배치. " +
-             "확정된 배치는 구조 옆 사선(끔) — 카메라 상대 배치로 되돌리지 말 것")]
-    public bool placeRelativeToCamera = false;
+    [Tooltip("켜면 단백질 경계 대신 사용자 시야(카메라) 기준 고정 위치(화면 왼쪽 중앙)에 놓는다. " +
+             "구조 옆 사선 배치는 사건마다 단백질 크기/선택 구간이 달라 화면 위치가 들쭉날쭉하고 " +
+             "화면 밖으로 잘리는 문제가 반복돼, 2026-08-27부로 이 카메라 기준 배치를 기본값으로 " +
+             "바꿨다(사용자 승인). PlaceBesideUser() 참고 — [[compound-panel-placement-final]]")]
+    public bool placeRelativeToCamera = true;
     [Tooltip("카메라 기준 오프셋 (x=오른쪽, y=위, z=앞, 단위 m). 음수 x로 시야 왼쪽에 둔다. " +
              "수평 방향(yaw)만 따르므로 고개를 숙여도 패널 높이는 눈높이 기준을 유지한다")]
     public Vector3 cameraOffset = new Vector3(-0.68f, 0f, 1.5f);
@@ -80,6 +85,18 @@ public class CompoundSelectionPanel : MonoBehaviour
     public float topOffset = 0f;
     [Tooltip("사선 각도 (도). 양수면 패널 정면이 사용자 중앙 시선(단백질) 쪽, 즉 안쪽을 향해 틀어진다")]
     public float diagonalYaw = 25f;
+    [Tooltip("화면 가장자리 안전 여백 (화면 높이 대비 비율). 위 배치 공식 결과가 이 여백보다 " +
+             "바깥을 가리키면 안쪽으로 당긴다 — 사건마다 남는 오차에 대한 최후 방어선.")]
+    public float edgeClampPadding = 0.03f;
+    [Tooltip("켜면 카메라와의 실제 거리에 관계없이 화면에서 차지하는 크기가 항상 비슷하게 " +
+             "panelScale을 보정한다. 끄면 panelScale이 월드 크기 그대로 적용돼, 계산된 위치가 " +
+             "카메라에 가까운 사건에서는 패널이 화면을 가득 채울 만큼 커 보인다.")]
+    public bool keepConstantApparentSize = true;
+    [Tooltip("panelScale이 '원래 크기'로 보이는 기준 거리(카메라~패널, unit). " +
+             "사건 2(EGFR)처럼 잘 보이던 사건을 기준으로 Play 중 이 값을 조절해 맞춘다.")]
+    public float apparentSizeReferenceDistance = 1.2f;
+    [Tooltip("보정에 쓰는 거리의 하한/상한. 너무 가깝거나 멀어도 배율이 폭주하지 않게 막는다.")]
+    public Vector2 apparentSizeDistanceClamp = new Vector2(0.5f, 4f);
 
     [Header("줌인 오버라이드 (예: 사건 5 열안정성 카메라 클로즈업)")]
     [Tooltip("켜져 있는 동안은 '구조 옆 사선' 대신 카메라 바로 옆에 크게 고정한다 — 카메라가 구조 " +
@@ -97,8 +114,8 @@ public class CompoundSelectionPanel : MonoBehaviour
     [Header("라벨")]
     [Tooltip("한글 표시를 위해 한글 글리프가 포함된 폰트를 지정 (비우면 내장 LegacyRuntime — 한글 미지원)")]
     public Font labelFont;
-    [Tooltip("화합물 이름/부제 글씨 색")]
-    public Color labelColor = Color.black;
+    [Tooltip("화합물 이름/부제 글씨 색. 배경판 없이 어두운 씬 위에 바로 얹히므로 흰색이 기본")]
+    public Color labelColor = Color.white;
     public float nameLabelSize = 0.045f;
     public float resultLabelSize = 0.05f;
     [Tooltip("도킹 결과 문구(빨강/초록)를 화면에도 띄울지. 비서가 같은 내용을 말하고 읽어주므로 기본은 끔.")]
@@ -249,7 +266,8 @@ public class CompoundSelectionPanel : MonoBehaviour
         float panelHalfHeight = (_outerSize.y > 0f ? _outerSize.y * 0.5f : boxSize + spacing * 0.5f + outerPadding) * scale;
 
         Vector3 center;
-        if (proteinLoader != null) center = proteinLoader.transform.position;
+        if (levelController != null) center = levelController.AminoAcidFocusWorldPosition;
+        else if (proteinLoader != null) center = proteinLoader.transform.position;
         else if (placementAnchor != null) center = placementAnchor.position;
         else return; // 배치 기준 없음
 
@@ -258,9 +276,12 @@ public class CompoundSelectionPanel : MonoBehaviour
         // 구조별로 다시 재는 순간 판넬이 퀘스트마다 다른 자리에 놓인다 — "구조 옆 사선"이라는
         // 배치 규칙 자체는 모든 퀘스트에서 똑같이 보여야 하므로 상수로 고정했다.
         //
-        // 중심(center)은 여전히 앵커의 실시간 위치를 쓴다 — 아미노산 단계에서 관심 구간만
-        // 화면 중앙에 오도록 StructureLevelController.ApplyAminoAcidCentering이 앵커 자체를
-        // 미리 옮겨두므로, 앵커 위치를 그대로 따르면 구간 정렬도 자동으로 따라온다.
+        // 중심(center)은 levelController.AminoAcidFocusWorldPosition(카메라가 실제로 보는 지점)을
+        // 우선 쓴다. proteinLoader.transform.position(앵커 원점)은 아미노산 단계에서
+        // ApplyAminoAcidCentering이 선택 구간의 무게중심을 화면 중앙으로 옮기느라 통째로
+        // 이동시키는데, 그 이동량은 "어떤 구간을 골랐느냐"에 따라 사건마다 달라져서 원점 자체는
+        // 더 이상 화면 중앙이 아니게 된다. 원점 기준으로 패널을 붙이면 사건마다 화면에서
+        // 제각각 다른 자리(심하면 화면 밖)에 나타나는 원인이 됐다.
         Vector3 pos = center - camRight * (ReferenceLateralExtent + panelHalfWidth + sideGap);
         pos.y = center.y + ReferenceTopExtent - panelHalfHeight + topOffset;
 
@@ -272,8 +293,29 @@ public class CompoundSelectionPanel : MonoBehaviour
         if (dist > 1e-4f)
             pos += toCam / dist * Mathf.Min(pullTowardCamera, Mathf.Max(dist - 0.6f, 0f));
 
+        // 최후 방어선: 위 계산이 그래도 화면 밖을 가리키면(사건마다 다른 구조 형태 등으로
+        // 여전히 오차가 남을 수 있으므로) 뷰포트로 투영해 가장자리 안쪽으로 당긴다.
+        // center를 실제 포커스 지점으로 고친 뒤에는 거의 안 걸리겠지만, 안 걸리는 경우에도
+        // 비용이 거의 없어 상시 켜둔다.
+        pos = ClampToViewport(pos, panelHalfWidth, panelHalfHeight);
+
+        // panelScale은 "월드 크기" 배율이라, 계산된 pos가 카메라에서 얼마나 떨어져 있느냐에
+        // 따라 화면에서 차지하는 크기가 달라진다. center를 AminoAcidFocusWorldPosition으로
+        // 바꾼 뒤로 이 거리 자체가 사건마다(선택 구간이 구조 어디 있느냐에 따라) 크게 달라질
+        // 수 있어서, 보정 없이 두면 카메라에 가까워진 사건에서 패널이 화면을 가득 채울 만큼
+        // 커 보인다 — apparentSizeReferenceDistance 기준으로 실제 거리에 반비례하게 다시
+        // 줄여, "화면에서 보이는 크기"는 사건과 무관하게 비슷하게 유지한다.
+        float finalScale = scale;
+        if (keepConstantApparentSize)
+        {
+            float finalDist = Mathf.Clamp(
+                Vector3.Distance(targetCamera.transform.position, pos),
+                apparentSizeDistanceClamp.x, apparentSizeDistanceClamp.y);
+            finalScale = scale * (finalDist / Mathf.Max(apparentSizeReferenceDistance, 0.01f));
+        }
+
         transform.position = pos;
-        transform.localScale = Vector3.one * scale;
+        transform.localScale = Vector3.one * finalScale;
 
         // TextMesh는 +Z가 뒤통수 — forward가 카메라 반대편을 향해야 글이 바로 보인다.
         // 패널이 시선 왼쪽에 있으므로 음(-)의 yaw를 줘야 정면이 중앙 시선(안쪽)을 향한다.
@@ -281,6 +323,34 @@ public class CompoundSelectionPanel : MonoBehaviour
         away.y = 0f;
         if (away.sqrMagnitude < 1e-6f) return;
         transform.rotation = Quaternion.LookRotation(away.normalized) * Quaternion.Euler(0f, -diagonalYaw, 0f);
+    }
+
+    /// <summary>
+    /// 계산된 위치가 카메라 뷰포트 밖(또는 가장자리 안전 여백 안쪽)을 가리키면 안으로 당긴다.
+    /// AIAssistantFollower.TryComputeAnchorOnScreen과 같은 방식 — 현재 거리(depth)에서
+    /// 뷰포트 1.0이 덮는 실제 월드 크기를 구해, 패널의 절반 크기(panelHalfWidth/Height)만큼의
+    /// 여백을 두고 뷰포트 좌표를 [padding, 1-padding] 안으로 clamp한 뒤 다시 월드 좌표로 되돌린다.
+    /// </summary>
+    private Vector3 ClampToViewport(Vector3 pos, float panelHalfWidth, float panelHalfHeight)
+    {
+        Vector3 viewportPos = targetCamera.WorldToViewportPoint(pos);
+        if (viewportPos.z <= 0f) return pos; // 카메라 뒤쪽 — 이 공식으로는 다룰 수 없는 상황
+
+        float depth = viewportPos.z;
+        float viewHeight = 2f * depth * Mathf.Tan(targetCamera.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float viewWidth = viewHeight * targetCamera.aspect;
+        if (viewHeight <= 1e-4f || viewWidth <= 1e-4f) return pos;
+
+        float marginX = panelHalfWidth / viewWidth + edgeClampPadding;
+        float marginY = panelHalfHeight / viewHeight + edgeClampPadding;
+
+        float clampedX = Mathf.Clamp(viewportPos.x, marginX, 1f - marginX);
+        float clampedY = Mathf.Clamp(viewportPos.y, marginY, 1f - marginY);
+
+        if (Mathf.Approximately(clampedX, viewportPos.x) && Mathf.Approximately(clampedY, viewportPos.y))
+            return pos; // 이미 안쪽 — 그대로 둔다
+
+        return targetCamera.ViewportToWorldPoint(new Vector3(clampedX, clampedY, depth));
     }
 
     /// <summary>
@@ -305,8 +375,15 @@ public class CompoundSelectionPanel : MonoBehaviour
         Quaternion basis = Quaternion.LookRotation(flatForward.normalized, Vector3.up);
         Vector3 pos = cam.position + basis * cameraOffset;
 
+        // cameraOffset은 카메라 기준 고정 오프셋이라 매 사건 동일한 화면 위치에 오는 게
+        // 보장되지만, 화면비/FOV가 달라지는 예외적인 경우까지 대비해 clamp도 한 번 더 건다.
+        float finalScale = Mathf.Max(scale, 0.01f);
+        float panelHalfWidth = (_outerSize.x > 0f ? _outerSize.x * 0.5f : boxSize + spacing * 0.5f + outerPadding) * finalScale;
+        float panelHalfHeight = (_outerSize.y > 0f ? _outerSize.y * 0.5f : boxSize + spacing * 0.5f + outerPadding) * finalScale;
+        pos = ClampToViewport(pos, panelHalfWidth, panelHalfHeight);
+
         transform.position = pos;
-        transform.localScale = Vector3.one * Mathf.Max(scale, 0.01f);
+        transform.localScale = Vector3.one * finalScale;
 
         // 패널이 시선 왼쪽에 있으므로 음(-)의 yaw로 정면을 중앙 시선(안쪽)으로 틀어 사선 배치
         Vector3 away = pos - cam.position;
@@ -409,24 +486,8 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void CreateLabel(Transform parent, string title, string subtitle, Vector3 localPos)
     {
-        // 이름표 전용 배경판. 바닥 글로우(스포트라이트 효과, CompoundSlot.BuildLightPresentation)는
-        // 눕혀진 원반이라 카메라 각도에 따라 글자와 어긋나 보인다 — 텍스트와 같은 방향을
-        // 향하는(같은 부모 회전을 그대로 따르는) 별도 배경판이라야 어느 각도에서도 글자 뒤에
-        // 정확히 붙어 보인다. anchor가 UpperCenter라 텍스트가 localPos에서 아래로 자라므로,
-        // 배경판 중심도 그만큼 아래로 내려서 잡는다.
-        const float backgroundHeight = 0.11f;
-        Vector3 backgroundLocalPos = localPos + new Vector3(0f, -backgroundHeight * 0.5f, 0.015f); // +Z = 텍스트보다 살짝 뒤
-
-        var bgGo = new GameObject("LabelBackground");
-        bgGo.transform.SetParent(parent, false);
-        bgGo.transform.localPosition = backgroundLocalPos;
-
-        var bgRenderer = bgGo.AddComponent<SpriteRenderer>();
-        bgRenderer.sprite = HoloSpriteFactory.Panel();
-        bgRenderer.drawMode = SpriteDrawMode.Sliced;
-        bgRenderer.size = new Vector2(boxSize * 0.92f, backgroundHeight);
-        bgRenderer.color = new Color(0.65f, 0.87f, 1f, 0.55f); // 파스텔 하늘색
-
+        // 이름표에 배경판은 두지 않는다. 씬 배경이 어두워서 흰 글씨만으로 충분히 읽히고,
+        // 하늘색 판을 깔면 그 자체가 화면에서 눈에 띄는 색면이 돼 분자보다 먼저 시선을 끈다.
         var go = new GameObject("Label");
         go.transform.SetParent(parent, false);
         go.transform.localPosition = localPos;

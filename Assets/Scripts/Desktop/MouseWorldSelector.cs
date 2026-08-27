@@ -27,6 +27,11 @@ public class MouseWorldSelector : MonoBehaviour
     private void Awake()
     {
         if (targetCamera == null) targetCamera = Camera.main;
+        // 하이라이터는 씬에 저장돼 있지 않다 — 참조가 비어 있으면 변이 잔기를 클릭해도
+        // 아무 반응이 없다. QuestSession/AIAssistantBrain과 같은 EnsureFor로 확보한다.
+        if (mutationHighlighter == null)
+            mutationHighlighter = MutationHighlighter.EnsureFor(
+                FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include));
     }
 
     private void Update()

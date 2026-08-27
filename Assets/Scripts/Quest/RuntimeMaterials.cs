@@ -32,4 +32,58 @@ public static class RuntimeMaterials
         var renderer = go.GetComponent<Renderer>();
         if (renderer != null) renderer.sharedMaterial = Solid;
     }
+
+    private static Material _transparent;
+
+    /// <summary>MPB의 _BaseColor 알파로 투명도를 조절할 수 있는 URP Lit 변형.
+    /// ThermalStabilityController(p53 wobble)와 ProteinLoader.Fade*(CFTR 구조 전환 페이드)가 같이 쓴다.</summary>
+    public static Material Transparent
+    {
+        get
+        {
+            if (_transparent == null)
+            {
+                Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+                if (shader != null)
+                {
+                    _transparent = new Material(shader) { name = "RuntimeTransparent" };
+                    _transparent.SetFloat("_Surface", 1f); // 0 = Opaque, 1 = Transparent
+                    _transparent.SetFloat("_Blend", 0f);   // 0 = Alpha
+                    _transparent.SetOverrideTag("RenderType", "Transparent");
+                    _transparent.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+                    _transparent.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+                    _transparent.SetInt("_ZWrite", 0);
+                    _transparent.DisableKeyword("_ALPHATEST_ON");
+                    _transparent.EnableKeyword("_ALPHABLEND_ON");
+                    _transparent.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                    _transparent.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+                    _transparent.EnableKeyword("_EMISSION");
+                }
+            }
+            return _transparent;
+        }
+    }
+
+    private static Material _lineUnlit;
+
+    /// <summary>
+    /// LineRenderer용 무광 투명 머티리얼. URP Lit은 정점 색을 읽지 않아 LineRenderer의
+    /// startColor/endColor가 그대로 무시되고, 지시선 하나 색을 바꾸려고 태그마다 머티리얼
+    /// 인스턴스를 만들면 드로우콜이 잔기 수만큼 늘어난다. Sprites/Default는 정점 색을 쓰므로
+    /// 머티리얼 하나를 모두가 공유하면서 색은 각자 지정할 수 있다.
+    /// <see cref="ResidueNumberTag"/>의 지시선이 쓴다.
+    /// </summary>
+    public static Material LineUnlit
+    {
+        get
+        {
+            if (_lineUnlit == null)
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+                _lineUnlit = new Material(shader) { name = "RuntimeLineUnlit" };
+            }
+            return _lineUnlit;
+        }
+    }
 }

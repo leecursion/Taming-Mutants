@@ -47,13 +47,20 @@ public static class LevelRigSetupMenu
         var selector = Object.FindFirstObjectByType<MouseWorldSelector>();
         director.disableDuringTransition = new MonoBehaviour[] { fallbackController, selector };
 
-        // Level2는 씬에 이미 있는 단백질을 그대로 쓴다.
+        // Level2~4(단백질 리본 -> 포켓 -> 도킹)는 모두 씬에 이미 있는 같은 단백질을 그대로 쓴다.
+        // 셋이 서로 다른 자산이 아니라 같은 분자를 점점 더 파고드는 카메라일 뿐이라, contentRoot를
+        // 따로 두면 Level2를 떠나는 순간(previous.SetActive(false)) 렌더러가 꺼진 채 Level3/4에서
+        // 다시 켜줄 대상이 없어 분자가 사라진다. 셋이 같은 contentRoot를 가리키게 하면
+        // CameraTransitionDirector.SharesContent가 그 사이 전환에서는 끄기 자체를 건너뛴다.
         var loader = Object.FindFirstObjectByType<ProteinLoader>();
         if (loader != null)
         {
-            stages[(int)QuestLevel.Level2_Protein].contentRoot = loader.gameObject;
-            // 원자 로딩 코루틴이 도중에 끊기지 않도록 렌더러만 끈다.
-            stages[(int)QuestLevel.Level2_Protein].hideMode = LevelStage.HideMode.DisableRenderers;
+            foreach (QuestLevel level in new[] { QuestLevel.Level2_Protein, QuestLevel.Level3_Pocket, QuestLevel.Level4_Docking })
+            {
+                stages[(int)level].contentRoot = loader.gameObject;
+                // 원자 로딩 코루틴이 도중에 끊기지 않도록 렌더러만 끈다.
+                stages[(int)level].hideMode = LevelStage.HideMode.DisableRenderers;
+            }
         }
 
         effects.postProcessVolume = Object.FindFirstObjectByType<UnityEngine.Rendering.Volume>();

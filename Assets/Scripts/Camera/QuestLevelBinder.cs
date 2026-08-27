@@ -34,9 +34,13 @@ public class QuestLevelBinder : MonoBehaviour
     public AIAssistantBrain assistant;
 
     [Header("단계 -> 레벨 대응")]
+    // Quest1(질병 원인 분석)은 원래 Level1_DNA(이중나선)로 보냈지만, 그 레벨에는 실제 구조가
+    // 없어 빈 자리로 갔다가 다시 Level2로 되돌아오는 "줌인 후 줌아웃" 왕복만 생겼다. DNA 관련
+    // 설명은 비서 대사로만 하고, 화면은 처음부터 리본이 있는 Level2_Protein으로 곧장 빨려
+    // 들어가게 한다.
     public StageLevel[] mapping =
     {
-        new StageLevel { stage = Stage.Quest1_DiseaseAnalysis,     level = QuestLevel.Level1_DNA },
+        new StageLevel { stage = Stage.Quest1_DiseaseAnalysis,     level = QuestLevel.Level2_Protein },
         new StageLevel { stage = Stage.Quest2_ProteinStructure,    level = QuestLevel.Level2_Protein },
         new StageLevel { stage = Stage.Quest3_TargetDiscovery,     level = QuestLevel.Level3_Pocket },
         new StageLevel { stage = Stage.Quest4_CandidateEvaluation, level = QuestLevel.Level4_Docking },
@@ -44,9 +48,10 @@ public class QuestLevelBinder : MonoBehaviour
     };
 
     [Header("퀘스트 시작 연출")]
-    [Tooltip("퀘스트를 시작하면 먼저 Level0(인체)에 세운 뒤 1단계 레벨로 파고든다.")]
-    public bool openFromBodyLevel = true;
-    [Tooltip("인체 홀로그램을 보여주는 시간(초). 이 동안 비서가 폐 종양을 설명한다.")]
+    [Tooltip("Level0(인체)에는 아직 실제 홀로그램 콘텐츠가 없어, 켜두면 3.5초간 빈 화면만 " +
+             "보여주다 Level1로 다시 이동하는 헛걸음이 생긴다. 인체/DNA 콘텐츠가 생기기 전까지는 꺼둔다.")]
+    public bool openFromBodyLevel = false;
+    [Tooltip("인체 홀로그램을 보여주는 시간(초). openFromBodyLevel이 켜져 있을 때만 쓰인다.")]
     public float bodyDwellSeconds = 3.5f;
 
     [Header("비서")]
@@ -103,6 +108,13 @@ public class QuestLevelBinder : MonoBehaviour
         // QuestSession.StartQuest는 시작하자마자 1단계에 들어가므로,
         // 여기서 붙잡지 않으면 인체 홀로그램이 한 프레임도 보이지 않는다.
         director.SnapTo(QuestLevel.Level0_Body);
+
+        // IntroDirector.MoveAssistantToQuestAnchor()가 이 시점에 이미 follower.anchorTarget을
+        // questAnchor(보통 ProteinAnchor_Main, Level2 자리에 있음)로 옮겨둔 상태다. 카메라는
+        // 아직 인체 레벨(Level0)에 있으니 비서가 그 먼 자리를 향해 화면을 가로질러 날아가
+        // "AI 창이 저 멀리 있다"는 인상을 준다. 첫 트랜지션이 Level2에 도착해 SnapToAnchor로
+        // 자리를 바로잡을 때까지(HandleTransitionCompleted) 숨겨서 그 이동 자체가 안 보이게 한다.
+        if (hideAssistantDuringTransition) SetAssistantVisible(false);
     }
 
     private void HandleStageEntered(QuestStageBriefing briefing)

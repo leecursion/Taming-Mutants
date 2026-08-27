@@ -61,8 +61,18 @@ def fetch_rcsb(pdb_id: str, out_dir: str = "structures") -> str:
     return path
 
 
+def _in_ranges(res_id: int, residue_range) -> bool:
+    """단일 (start, end) 튜플과 여러 구간(list of tuple) 모두 지원한다.
+    예: CFTR은 NBD1(370-680)과 TMD2 ICL4(1030-1085)처럼 서열상 멀리 떨어진
+    두 도메인을 동시에 보여줘야 해서 단일 구간만으로는 부족하다."""
+    if not residue_range:
+        return True
+    ranges = residue_range if isinstance(residue_range, list) else [residue_range]
+    return any(lo <= res_id <= hi for lo, hi in ranges)
+
+
 def pdb_to_layered_json(pdb_path: str, out_json_path: str,
-                         residue_range: tuple[int, int] | None = None,
+                         residue_range=None,
                          mutation_sites: tuple[int, ...] = ()) -> None:
     print(f"[3/4] PDB 파싱 및 JSON 변환: {pdb_path}")
     parser = PDBParser(QUIET=True)
@@ -72,7 +82,7 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
     for atom in structure.get_atoms():
         res = atom.get_parent()
         res_id = res.get_id()[1]
-        if residue_range and not (residue_range[0] <= res_id <= residue_range[1]):
+        if not _in_ranges(res_id, residue_range):
             continue  # 관심 영역(예: 키나아제 도메인)만 필터링
         raw_atoms.append((atom, res, res_id))
 
@@ -125,11 +135,15 @@ CONFIGS = {
 }
 
 # RCSB에 등록된 실제 구조(실험 구조, UniProt/AlphaFold 아님) 전처리 설정.
-# 8EJ1은 F508del CFTR(미교정) cryo-EM 구조라 508번 자리가 결실(deletion)로 아예 비어 있다 —
+# 8EJ1/8EIQ는 F508del CFTR 구조라 508번 자리가 결실(deletion)로 아예 비어 있다 —
 # 그래서 508 대신 그 자리를 감싸는 507/509를 변이 표시 잔기로 쓴다.
-# range는 F508이 속한 NBD1 도메인 위주로 좁혀 원자 수를 다른 퀘스트와 비슷한 규모로 유지한다.
+# range는 두 구간을 함께 담는다: NBD1(F508 루프 포함)과 TMD2 ICL4(NBD1과 접촉하는 계면) —
+# 서열상 멀리 떨어져 있지만 F508del의 folding/domain-assembly 결함을 보여주려면 둘 다 필요하다.
+# 원자 수는 두 구간을 합쳐도 다른 퀘스트와 비슷한 규모(수천 개 이하)로 유지된다.
+_CFTR_RANGE = [(370, 680), (1030, 1085)]
 RCSB_CONFIGS = {
-    "8EJ1": {"range": (370, 680), "mutations": (507, 509)},  # CFTR F508del, 교정 전(미접힘) 상태
+    "8EJ1": {"range": _CFTR_RANGE, "mutations": (507, 509)},  # F508del, corrector/potentiator 처리 전
+    "8EIQ": {"range": _CFTR_RANGE, "mutations": (507, 509)},  # F508del + Trikafta(Elexacaftor/Tezacaftor/Ivacaftor) 처리 후
 }
 
 if __name__ == "__main__":

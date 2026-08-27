@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Events;
 
@@ -68,8 +69,31 @@ public class LevelStage : MonoBehaviour
     /// <summary>카메라가 도착해야 할 포즈. cameraAnchor가 없으면 자기 자신.</summary>
     public Transform Anchor => cameraAnchor != null ? cameraAnchor : transform;
 
-    private Renderer[] _cachedRenderers;
-    private int _lastChildCount = -1;
+    /// <summary>
+    /// DisableRenderers 모드의 캐시/가시성 상태. contentRoot 기준으로 공유한다.
+    ///
+    /// Level2~4처럼 여러 LevelStage가 같은 contentRoot(ProteinAnchor_Main)를 가리킬 때,
+    /// 각자 자기 IsActive만 보고 렌더러를 켜고 끄면 문제가 생긴다: 구조가 새로 로드되어
+    /// 자식 수가 바뀌면 셋 다 같은 프레임에 LateUpdate가 돌면서 각자 캐시를 다시 만드는데,
+    /// 실행 순서가 보장되지 않아 "지금 활성인 레벨"이 방금 켠 렌더러를 "비활성인 형제 레벨"이
+    /// 뒤이어 도로 꺼버릴 수 있다 — Ribbon/Helix/원자가 로딩 직후 안 보이는 원인이 이것이다.
+    /// contentRoot당 하나의 상태를 공유해, "이 contentRoot를 쓰는 레벨이 하나라도 활성인가"로
+    /// 판단하면 형제끼리 서로 덮어쓰는 일이 없다.
+    /// </summary>
+    private class SharedContentState
+    {
+        public readonly HashSet<LevelStage> activeStages = new HashSet<LevelStage>();
+        public Renderer[] cachedRenderers;
+        public int lastChildCount = -1;
+    }
+
+    private static readonly Dictionary<GameObject, SharedContentState> _sharedStates =
+        new Dictionary<GameObject, SharedContentState>();
+
+    // "Enter Play Mode Options"로 도메인 리로드를 끈 경우에도 이전 플레이의 캐시가
+    // 다음 플레이로 새지 않도록 플레이 시작마다 비운다.
+    [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+    private static void ResetSharedStates() => _sharedStates.Clear();
 
     /// <summary>
     /// 무대를 켜고 끈다. <paramref name="invokeEvents"/>를 끄면 훅 없이 상태만 맞춘다
@@ -80,7 +104,7 @@ public class LevelStage : MonoBehaviour
         bool changed = IsActive != active;
         IsActive = active;
 
-        ApplyVisibility(active);
+        ApplyVisibility();
 
         if (!changed || !invokeEvents) return;
 
@@ -88,22 +112,57 @@ public class LevelStage : MonoBehaviour
         else onExit?.Invoke();
     }
 
-    private void ApplyVisibility(bool visible)
+    private SharedContentState GetSharedState()
+    {
+        if (!_sharedStates.TryGetValue(contentRoot, out SharedContentState state))
+        {
+            state = new SharedContentState();
+            _sharedStates[contentRoot] = state;
+        }
+
+        return state;
+    }
+
+    /// <summary>
+    /// contentRoot 아래에서 렌더러 구성이 바뀌었을 때(원자 재로딩, 리본/Helix 재생성 등)
+    /// 직접 불러서 캐시를 버린다.
+    ///
+    /// LateUpdate의 직계 자식 수 감시만으로는 놓치는 경우가 있다 — 리본/Helix 세그먼트는
+    /// contentRoot의 손자로 붙고, Destroy()는 프레임 끝에야 실제로 반영되는 등 타이밍이
+    /// 얽혀 있다. 구조를 실제로 다시 만드는 쪽(StructureLevelController, ProteinLoader)이
+    /// "지금 바뀌었다"고 직접 알려주면 그런 타이밍 문제와 무관하게 다음 갱신에서 확실히
+    /// 다시 잡힌다.
+    /// </summary>
+    public static void InvalidateSharedContent(GameObject contentRoot)
+    {
+        if (contentRoot == null) return;
+        if (_sharedStates.TryGetValue(contentRoot, out SharedContentState state))
+            state.cachedRenderers = null;
+    }
+
+    private void ApplyVisibility()
     {
         if (contentRoot == null) return;
 
         if (hideMode == HideMode.Deactivate)
         {
-            if (contentRoot.activeSelf != visible) contentRoot.SetActive(visible);
+            if (contentRoot.activeSelf != IsActive) contentRoot.SetActive(IsActive);
             return;
         }
 
+        SharedContentState state = GetSharedState();
+        if (IsActive) state.activeStages.Add(this);
+        else state.activeStages.Remove(this);
+
+        // 같은 contentRoot를 쓰는 레벨이 하나라도 활성이면 보인다.
+        bool visible = state.activeStages.Count > 0;
+
         // 원자 수천 개를 매 호출마다 훑지 않도록 캐시한다.
         // 캐시를 버리는 판단은 LateUpdate 한 곳에서만 한다.
-        if (_cachedRenderers == null)
-            _cachedRenderers = contentRoot.GetComponentsInChildren<Renderer>(includeInactive: true);
+        if (state.cachedRenderers == null)
+            state.cachedRenderers = contentRoot.GetComponentsInChildren<Renderer>(includeInactive: true);
 
-        foreach (Renderer r in _cachedRenderers)
+        foreach (Renderer r in state.cachedRenderers)
             if (r != null) r.enabled = visible;
     }
 
@@ -111,13 +170,21 @@ public class LevelStage : MonoBehaviour
     {
         if (contentRoot == null || hideMode != HideMode.DisableRenderers) return;
 
+        SharedContentState state = GetSharedState();
+
         // 로딩이 끝나 원자가 새로 생기면, 숨긴 상태였더라도 새 렌더러는 켜진 채로 태어난다.
         // 자식 수가 달라진 프레임에 한 번만 다시 적용해 새 오브젝트도 같은 상태로 맞춘다.
+        // contentRoot를 공유하는 레벨이 여럿이면 이 검사도 상태를 공유하므로, 한 프레임에
+        // 여러 LevelStage의 LateUpdate가 돌아도 실제 재적용은 한 번만 일어난다.
+        //
+        // 캐시가 이미 비어 있으면(InvalidateSharedContent로 방금 버려졌으면) 자식 수가
+        // 그대로여도 다시 채워 넣는다 — 손자로 붙는 리본/Helix 세그먼트는 자식 수 변화만으론
+        // 못 잡을 수 있어서, 호출 쪽이 직접 무효화한 신호를 여기서 놓치면 안 된다.
         int count = contentRoot.transform.childCount;
-        if (count == _lastChildCount) return;
+        if (count == state.lastChildCount && state.cachedRenderers != null) return;
 
-        _lastChildCount = count;
-        _cachedRenderers = null;
-        ApplyVisibility(IsActive);
+        state.lastChildCount = count;
+        state.cachedRenderers = null;
+        ApplyVisibility();
     }
 }
