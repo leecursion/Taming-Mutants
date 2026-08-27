@@ -243,6 +243,10 @@ public class MutationHighlighter : MonoBehaviour
         ResidueNumberTag tag = FindTag(residueId);
         if (tag != null) tag.Pop();
 
+        // 리본/나선 조각에 붙은 표시도 함께 반짝인다. 아래 원자 표시는 아미노산 단계에서만
+        // 살아 있으므로, 도입 시나리오가 재생되는 리본 단계에서 실제로 반응하는 건 이쪽이다.
+        if (levelController != null) levelController.FlashTargetResidue(residueId);
+
         if (!_atomsByResidue.TryGetValue(residueId, out var atoms)) return;
 
         foreach (var atomInfo in atoms)

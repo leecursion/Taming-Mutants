@@ -102,7 +102,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest1_DiseaseAnalysis,
                 title = "1화 · 사건 현장",
-                objective = "세포 속으로 들어가서, 이상 신호가 시작된 KRAS 단백질의 12번 자리를 찾아보자.",
+                objective = "세포 속으로 들어가서, 이상 신호가 시작된 KRAS 단백질의 12번 자리를 찾아봐요.",
                 assistantLines = new[]
                 {
                     "여기 보이는 세포들에서 이상한 신호가 나오고 있어요. 안으로 들어가서 살펴봐요.",
@@ -123,7 +123,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 단백질 탐정",
-                objective = "정상 단백질과 이상해진 단백질의 모양을 비교하고, AI가 어디를 자신 있게 예측했는지 색깔로 확인해보자.",
+                objective = "정상 단백질과 이상해진 단백질의 모양을 비교하고, AI가 어디를 자신 있게 예측했는지 색깔로 확인해 봐요.",
                 assistantLines = new[]
                 {
                     "바뀐 설계도대로 단백질이 새로 만들어져요. 사슬이 접히면서 입체 모양이 되는 걸 지켜봐요.",
@@ -144,7 +144,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest3_TargetDiscovery,
                 title = "3화 · 숨은 열쇠 구멍",
-                objective = "단백질 안쪽에 숨어있는 작은 '열쇠 구멍'과, 새로 생긴 특별한 원자를 찾아 표시해보자.",
+                objective = "단백질 안쪽에 숨어있는 작은 '열쇠 구멍'과, 새로 생긴 특별한 원자를 찾아 표시해 봐요.",
                 assistantLines = new[]
                 {
                     "단백질 표면을 지나 안쪽 빈 공간으로 들어가 볼게요. 이 자리가 바로 열쇠 구멍이에요.",
@@ -165,7 +165,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest4_CandidateEvaluation,
                 title = "4화 · 딱 맞는 열쇠 고르기",
-                objective = "후보물질 4종 중, 열쇠 구멍에 맞고 특별한 원자와도 단단히 붙는 진짜 열쇠를 찾아보자.",
+                objective = "후보물질 4종 중, 열쇠 구멍에 맞고 특별한 원자와도 단단히 붙는 진짜 열쇠를 찾아봐요.",
                 assistantLines = new[]
                 {
                     "후보물질 네 개를 준비했어요. 하나씩 열쇠 구멍에 가져다 대 봐요.",
@@ -185,7 +185,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest5_Verification,
                 title = "5화 · 결과 확인",
-                objective = "세포가 진짜로 좋아졌는지, 다른 정상 세포는 안전한지 화면으로 확인하고 사건을 마무리하자.",
+                objective = "세포가 진짜로 좋아졌는지, 다른 정상 세포는 안전한지 화면으로 확인하고 사건을 마무리해요.",
                 assistantLines = new[]
                 {
                     "원자 속 세계에서 나와서 다시 연구실로 돌아왔어요.",
@@ -271,7 +271,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest1_DiseaseAnalysis,
                 title = "1화 · 사건 현장",
-                objective = "세포 표면의 EGFR 안테나에서 이상해진 858번 자리를 찾아보자.",
+                objective = "세포 표면의 EGFR 안테나에서 이상해진 858번 자리를 찾아봐요.",
                 assistantLines = new[]
                 {
                     "EGFR은 세포 표면에 있는 신호 안테나예요. 원래는 신호가 와야만 켜지는데, 지금은 아니에요.",
@@ -287,7 +287,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 단백질 탐정",
-                objective = "색깔 지도를 보고 AI가 확신하지 못한 부분을 찾아보자.",
+                objective = "색깔 지도를 보고 AI가 확신하지 못한 부분을 찾아봐요.",
                 assistantLines = new[]
                 {
                     "색이 파란색일수록 AI가 이 모양을 자신 있게 예측한 거예요. 노란빛 부분은 조심해서 봐요.",
@@ -300,7 +300,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest3_TargetDiscovery,
                 title = "3화 · 숨은 열쇠 구멍",
-                objective = "안테나 안쪽, 원래 신호를 만드는 연료가 들어가는 자리를 찾아 표시하자.",
+                objective = "안테나 안쪽, 원래 신호를 만드는 연료가 들어가는 자리를 찾아 표시해요.",
                 assistantLines = new[]
                 {
                     "원래 이 자리엔 세포를 움직이게 하는 연료 같은 물질이 들어가요. 그 자리를 찾으면 그게 표적이에요.",
@@ -314,7 +314,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest4_CandidateEvaluation,
                 title = "4화 · 다시 찾는 열쇠",
-                objective = "저항하는 세포까지 막을 수 있는 진짜 열쇠를 찾아보자.",
+                objective = "저항하는 세포까지 막을 수 있는 진짜 열쇠를 찾아봐요.",
                 assistantLines = new[] { "처음 만든 열쇠는 세포가 방법을 바꾸는 바람에 더 안 듣게 됐어요. 새로운 열쇠를 찾아봐요." },
                 hints = new[] { "797번 자리에 단단히 달라붙는 열쇠를 찾아봐요." },
                 llmContext = "세포가 790번 자리 모양을 바꾸면(저항) 예전 열쇠가 안 맞게 된다. 새로운 열쇠는 " +
@@ -324,7 +324,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest5_Verification,
                 title = "5화 · 결과 확인",
-                objective = "효과와 안전성을 확인하고 사건을 마무리하자.",
+                objective = "효과와 안전성을 확인하고 사건을 마무리해요.",
                 assistantLines = new[] { "정상 안테나까지 막으면 피부 같은 곳에서 부작용이 생길 수 있어요. 결과를 확인해 봐요." },
                 hints = new[] { "변형된 것만 골라서 막을수록 정상 세포는 더 안전해요." },
                 llmContext = "정상 EGFR까지 막으면 피부 발진 같은 부작용이 생길 수 있어, 변이된 것만 골라 " +
@@ -367,7 +367,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest1_DiseaseAnalysis,
                 title = "1화 · 첫 번째 승리",
-                objective = "예전에 이 사건을 해결했던 방법과, 표적이 된 ABL1 단백질의 315번 자리를 되짚어보자.",
+                objective = "예전에 이 사건을 해결했던 방법과, 표적이 된 ABL1 단백질의 315번 자리를 되짚어 봐요.",
                 assistantLines = new[]
                 {
                     "다시 만나서 반가워요! 이번엔 예전에 우리가 해결했던 사건이 돌아왔어요.",
@@ -384,7 +384,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 18개월 후, 돌아온 신호",
-                objective = "커진 315번 자리 곁사슬을 찾아, 무엇이 달라졌는지 확인해보자.",
+                objective = "커진 315번 자리 곁사슬을 찾아, 무엇이 달라졌는지 확인해 봐요.",
                 assistantLines = new[]
                 {
                     "⏳ 18개월 후... 화면이 잠깐 어두워졌다가, 다시 같은 자리를 비춰 드릴게요.",
@@ -401,7 +401,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest3_TargetDiscovery,
                 title = "3화 · 문지기가 된 아미노산",
-                objective = "커진 문지기를 피해서 접근해야 하는 ATP 포켓의 새로운 모양을 살펴보자.",
+                objective = "커진 문지기를 피해서 접근해야 하는 ATP 포켓의 새로운 모양을 살펴봐요.",
                 assistantLines = new[]
                 {
                     "이 포켓은 예전과 똑같은 자리이지만, 315번 문지기 때문에 입구 모양이 완전히 달라졌어요.",
@@ -416,7 +416,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest4_CandidateEvaluation,
                 title = "4화 · 다섯 개의 열쇠",
-                objective = "후보물질 5종 중, 커진 문지기를 피해 포켓에 안착하는 진짜 열쇠를 찾아보자.",
+                objective = "후보물질 5종 중, 커진 문지기를 피해 포켓에 안착하는 진짜 열쇠를 찾아봐요.",
                 assistantLines = new[]
                 {
                     "후보물질을 다섯 개 준비했어요. Imatinib, Nilotinib, Dasatinib은 전에도 쓰였던 익숙한 열쇠들이고, 나머지 둘은 이번 사건을 위해 새로 나온 후보예요.",
@@ -436,7 +436,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest5_Verification,
                 title = "5화 · 구조가 만든 승리",
-                objective = "실패한 시도들과 성공한 결합을 비교하고, 이번 사건에서 배운 교훈을 정리하자.",
+                objective = "실패한 시도들과 성공한 결합을 비교하고, 이번 사건에서 배운 교훈을 정리해요.",
                 assistantLines = new[]
                 {
                     "돌아보면 Imatinib, Nilotinib, Dasatinib 모두 315번 자리에서 막혔었죠.",
@@ -543,7 +543,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest1_DiseaseAnalysis,
                 title = "1화 · 숨쉬기 힘든 이유",
-                objective = "낭포성 섬유증이 왜 생기는지, CFTR 단백질의 508번 자리에 무슨 일이 일어났는지 알아보자.",
+                objective = "낭포성 섬유증이 왜 생기는지, CFTR 단백질의 508번 자리에 무슨 일이 일어났는지 알아봐요.",
                 assistantLines = new[]
                 {
                     "이번 사건은 폐와 관련이 있어요. 낭포성 섬유증이라는 병에 걸린 환자의 세포를 살펴볼 거예요.",
@@ -560,7 +560,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 불안정한 구조",
-                objective = "접히지 못하고 불안정하게 흔들리는 CFTR의 507/509번 자리 주변을 살펴보자.",
+                objective = "접히지 못하고 불안정하게 흔들리는 CFTR의 507/509번 자리 주변을 살펴봐요.",
                 assistantLines = new[]
                 {
                     "이 구조를 보세요 — 508번 자리가 있어야 할 곳이 비어 있어서 그 주변(507, 509번)이 계속 흔들리고 있어요.",
@@ -575,7 +575,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest3_TargetDiscovery,
                 title = "3화 · 두 가지 문제, 두 가지 해결책",
-                objective = "이 CFTR에게 필요한 두 가지 도움 — '접히도록 돕는 것'과 '열리도록 돕는 것'을 구분해보자.",
+                objective = "이 CFTR에게 필요한 두 가지 도움 — '접히도록 돕는 것'과 '열리도록 돕는 것'을 구분해 봐요.",
                 assistantLines = new[]
                 {
                     "이 사건은 문제가 두 개예요. 첫째, 접힘이 불안정해서 세포막까지 못 간다는 것. 둘째, 설령 막에 도달해도 문이 잘 안 열린다는 것.",
@@ -592,7 +592,7 @@ public static class IntroSetupMenu
                 stage = Stage.Quest4_CandidateEvaluation,
                 title = "4화 · 다섯 개의 약, 두 번의 선택",
                 objective = "후보물질 5종 중, 먼저 CFTR을 세포막으로 보내줄 corrector를 찾고, 그다음 문을 " +
-                            "열어줄 potentiator를 찾아보자.",
+                            "열어줄 potentiator를 찾아봐요.",
                 assistantLines = new[]
                 {
                     "후보물질을 다섯 개 준비했어요. 이번엔 정답이 두 개예요 — 순서대로 골라야 해요.",
@@ -613,7 +613,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest5_Verification,
                 title = "5화 · 다시 열린 문",
-                objective = "채널이 열리고 Cl⁻ 이온이 흐르기 시작한 결과를 확인하고 사건을 마무리하자.",
+                objective = "채널이 열리고 Cl⁻ 이온이 흐르기 시작한 결과를 확인하고 사건을 마무리해요.",
                 assistantLines = new[]
                 {
                     "corrector와 potentiator가 함께 작용하니 CFTR이 드디어 세포막에서 문을 열었어요!",
@@ -718,7 +718,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest1_DiseaseAnalysis,
                 title = "1화 · 흔들리는 방패",
-                objective = "p53이라는 방패 단백질에서, 220번 자리가 바뀌며 생긴 문제를 확인하자.",
+                objective = "p53이라는 방패 단백질에서, 220번 자리가 바뀌며 생긴 문제를 확인해요.",
                 assistantLines = new[]
                 {
                     "p53은 손상된 세포가 더 퍼지지 않게 막는 방패 단백질이에요. '유전체의 수호자'라고도 불려요.",
@@ -739,7 +739,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 온도를 올려보기",
-                objective = "20~60°C 온도 슬라이더를 움직여, 온도가 오를수록 방패가 얼마나 흔들리는지 관찰하자.",
+                objective = "20~60°C 온도 슬라이더를 움직여, 온도가 오를수록 방패가 얼마나 흔들리는지 관찰해요.",
                 assistantLines = new[]
                 {
                     "슬라이더로 온도를 올려 볼게요. 흔들림(wobble)이 점점 커지는 게 보이시죠?",
@@ -761,7 +761,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest3_TargetDiscovery,
                 title = "3화 · 새로 생긴 틈",
-                objective = "220번 자리 바뀌면서 새로 생긴 작은 틈(포켓)을 찾아 표시하자.",
+                objective = "220번 자리 바뀌면서 새로 생긴 작은 틈(포켓)을 찾아 표시해요.",
                 assistantLines = new[]
                 {
                     "방패 표면 안쪽으로 들어가 볼게요. 여기, 원래는 없던 작은 틈이 보이시죠?",
@@ -781,7 +781,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest4_CandidateEvaluation,
                 title = "4화 · 방패를 다시 조이기",
-                objective = "후보물질 5종 중, 이 틈에 맞고 방패를 실제로 단단하게 만들어 주는 것을 찾아보자.",
+                objective = "후보물질 5종 중, 이 틈에 맞고 방패를 실제로 단단하게 만들어 주는 것을 찾아봐요.",
                 assistantLines = new[]
                 {
                     "후보물질을 다섯 개 준비했어요. 하나씩 틈에 가져다 대 봐요.",
@@ -803,7 +803,7 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest5_Verification,
                 title = "5화 · 37°C에서 다시 확인하기",
-                objective = "체온(37°C)에서 안정화 전/후를 비교하고, 방패가 다시 제 역할(DNA 결합)을 하는지 확인하자.",
+                objective = "체온(37°C)에서 안정화 전/후를 비교하고, 방패가 다시 제 역할(DNA 결합)을 하는지 확인해요.",
                 assistantLines = new[]
                 {
                     "안정화제를 붙인 채로 다시 37°C로 맞춰 볼게요. Before/After를 비교해 봐요.",
