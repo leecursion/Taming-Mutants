@@ -63,4 +63,27 @@ public static class RuntimeMaterials
             return _transparent;
         }
     }
+
+    private static Material _lineUnlit;
+
+    /// <summary>
+    /// LineRenderer용 무광 투명 머티리얼. URP Lit은 정점 색을 읽지 않아 LineRenderer의
+    /// startColor/endColor가 그대로 무시되고, 지시선 하나 색을 바꾸려고 태그마다 머티리얼
+    /// 인스턴스를 만들면 드로우콜이 잔기 수만큼 늘어난다. Sprites/Default는 정점 색을 쓰므로
+    /// 머티리얼 하나를 모두가 공유하면서 색은 각자 지정할 수 있다.
+    /// <see cref="ResidueNumberTag"/>의 지시선이 쓴다.
+    /// </summary>
+    public static Material LineUnlit
+    {
+        get
+        {
+            if (_lineUnlit == null)
+            {
+                Shader shader = Shader.Find("Sprites/Default");
+                if (shader == null) shader = Shader.Find("Universal Render Pipeline/Unlit");
+                _lineUnlit = new Material(shader) { name = "RuntimeLineUnlit" };
+            }
+            return _lineUnlit;
+        }
+    }
 }

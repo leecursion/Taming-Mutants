@@ -31,6 +31,7 @@ MonoBehaviour:
   accent: {r: 1, g: 0.45, b: 0.3, a: 1}
   structureStreamingPath: structures/P53_Y220C_9S9O.json
   mutationResidueIds: dc000000
+  mutationSiteAlias: "무너진 틈"
   targetPocketLabel: "220\uBC88 \uC790\uB9AC \uC606\uC5D0 \uC0C8\uB85C \uC0DD\uAE34
     \uD2C8 (Y220C pocket)"
   scenario:
@@ -58,9 +59,10 @@ MonoBehaviour:
       mood: 2
       action: 2
       llmPrompt: 
-    - line: "\ubc18\uc9dd\uc774\ub294 220\ubc88 \uc790\ub9ac\ub97c \ubcf4\uc138\uc694. \uc5ec\uae30\uac00 \ubc14\ub00c\uba74\uc11c \uc606\uad6c\ub9ac\uc5d0 \ud2c8\uc774 \uc0dd\uacbc\uc5b4\uc694. \uadf8 \ud2c8 \ub54c\ubb38\uc5d0 \ubb34\ub108\uc9c0\ub294 \uac70\uc608\uc694."
+    - line: "\ubd88\uc548\ud558\uac8c\u0020\ub5a8\uace0\u0020\uc788\ub294 220\ubc88 \uc790\ub9ac\ub97c \ubcf4\uc138\uc694. \uc5ec\uae30\uac00 \ubc14\ub00c\uba74\uc11c \uc606\uad6c\ub9ac\uc5d0 \ud2c8\uc774 \uc0dd\uacbc\uc5b4\uc694. \uadf8 \ud2c8 \ub54c\ubb38\uc5d0 \ubb34\ub108\uc9c0\ub294 \uac70\uc608\uc694."
       mood: 4
       action: 3
+      focusResidueId: 220
       llmPrompt: 
     - line: "\uc7ac\ubbf8\uc788\ub294 \uac74, \uadf8 \ud2c8\uc774 \uc57d\uc810\uc774\uc790 \uae30\ud68c\ub77c\ub294 \uac70\uc608\uc694. \uc65c \uadf8\ub7f0\uc9c0 \uac19\uc774 \uc54c\uc544\ubd10\uc694."
       mood: 3

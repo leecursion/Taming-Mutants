@@ -28,6 +28,9 @@ public class QuestSession : MonoBehaviour
     public ProteinLoader proteinLoader;
     [Tooltip("퀘스트의 변이 잔기를 이 하이라이터에 등록한다.")]
     public MutationHighlighter mutationHighlighter;
+    [Tooltip("나선 단계에서 변이 자리를 띠로 짚어주려면 연결한다. 비우면 proteinLoader와 같은 " +
+             "오브젝트에서 찾는다.")]
+    public StructureLevelController levelController;
     [Tooltip("퀘스트를 고르기 전에는 숨겨둘 오브젝트들(실험 테이블 등). " +
              "proteinLoader의 오브젝트는 따로 지정하지 않아도 함께 처리된다.")]
     public GameObject[] extraStageObjects;
@@ -54,6 +57,17 @@ public class QuestSession : MonoBehaviour
 
     private void OnEnable()
     {
+        // 씬 참조가 비어 있어도 조용히 죽지 않게 한 번 더 찾아본다. 인트로 동안 무대가 꺼져
+        // 있으므로 비활성까지 뒤진다 — DockingQuestController.Awake와 같은 이유, 같은 방식.
+        if (proteinLoader == null)
+            proteinLoader = FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include);
+        // 하이라이터는 아예 씬에 저장돼 있지 않았다. 없으면 만들어 붙인다 — 없으면 변이 부위
+        // 펄스와 번호표, 도입 시나리오의 "여기가 문제야" 연출이 전부 사라진다.
+        if (mutationHighlighter == null)
+            mutationHighlighter = MutationHighlighter.EnsureFor(proteinLoader);
+        if (levelController == null && proteinLoader != null)
+            levelController = proteinLoader.GetComponent<StructureLevelController>();
+
         if (proteinLoader != null) proteinLoader.OnLoaded += HandleStructureLoaded;
     }
 
@@ -155,9 +169,15 @@ public class QuestSession : MonoBehaviour
                 {
                     residueId = residueId,
                     description = $"{quest.gene} {quest.mutation}",
+                    alias = quest.mutationSiteAlias,
                 });
             }
         }
+
+        // 나선 단계에서 변이 자리를 띠로 짚어준다. 반드시 Reload() 앞에서 — 띠는 구조를 읽은 뒤
+        // 나선을 만들 때 함께 얹히므로, 로드가 끝난 다음에 넣으면 이번 구조에는 반영되지 않는다.
+        if (levelController != null)
+            levelController.SetTargetResidues(quest.mutationResidueIds);
 
         if (proteinLoader == null) return;
 

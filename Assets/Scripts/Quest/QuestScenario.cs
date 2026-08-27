@@ -19,7 +19,8 @@ public enum ScenarioAction
     /// <summary>분자 쪽을 돌아본다. "저기를 봐" 하는 대사에 쓴다.</summary>
     LookAtMolecule,
 
-    /// <summary>변이 부위를 반짝인다. "바로 여기가 문제야" 하는 대사에 쓴다.</summary>
+    /// <summary>변이 부위를 반짝인다. "바로 여기가 문제야" 하는 대사에 쓴다.
+    /// <see cref="ScenarioBeat.focusResidueId"/>를 지정하면 그 잔기 하나만 짚는다.</summary>
     FlashMutationSite,
 
     /// <summary>
@@ -121,6 +122,11 @@ public class ScenarioBeat
 
     [Tooltip("이 대사에 맞춰 할 행동")]
     public ScenarioAction action = ScenarioAction.None;
+
+    [Tooltip("action이 FlashMutationSite일 때 짚을 잔기 번호. 0이면 등록된 변이 부위를 전부 반짝인다. " +
+             "'858번 자리를 보세요'처럼 번호를 말하는 대사라면 반드시 그 번호를 적는다 — " +
+             "전부 반짝이면 정작 어느 것이 858인지 알 수 없다.")]
+    public int focusResidueId;
 
     [TextArea(1, 4)]
     [Tooltip("action이 AskLlm일 때 모델에게 던질 질문. 비워두면 기본 질문을 쓴다.")]

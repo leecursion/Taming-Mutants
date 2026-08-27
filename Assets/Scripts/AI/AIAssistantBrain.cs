@@ -150,7 +150,12 @@ public class AIAssistantBrain : MonoBehaviour
 
         if (session == null) session = FindFirstObjectByType<QuestSession>();
         if (client == null) client = FindFirstObjectByType<AIChatBackend>();
-        if (mutationHighlighter == null) mutationHighlighter = FindFirstObjectByType<MutationHighlighter>();
+        // 하이라이터는 어느 씬에도 저장돼 있지 않아 지금까지 계속 null이었다 — 변이 부위를 짚는
+        // 연출(FlashMutationSite)과 잔기 선택 설명이 통째로 죽어 있던 원인이다. 없으면 만들어
+        // 쓴다. QuestSession도 같은 EnsureFor를 부르므로 어느 쪽이 먼저 깨어나든 하나만 생긴다.
+        if (mutationHighlighter == null)
+            mutationHighlighter = MutationHighlighter.EnsureFor(
+                FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include));
         // 도킹 컨트롤러는 4단계 전까지 꺼져 있을 수 있어 비활성까지 뒤진다.
         if (dockingQuest == null) dockingQuest = FindFirstObjectByType<DockingQuestController>(FindObjectsInactive.Include);
         if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
@@ -627,7 +632,10 @@ public class AIAssistantBrain : MonoBehaviour
         if (follower != null && mutationHighlighter != null)
             follower.FocusOn(mutationHighlighter.transform);
 
-        ExplainSelection($"{site.residueId}번 잔기", site.description);
+        // 번호표도 이 자리 하나만 강조로 바꾼다 — 말과 화면이 같은 잔기를 가리키게.
+        if (mutationHighlighter != null) mutationHighlighter.FocusResidue(site.residueId);
+
+        ExplainSelection(site.SpokenName, site.description);
     }
 
     // --- 구조 단계 해설 ---
@@ -715,7 +723,7 @@ public class AIAssistantBrain : MonoBehaviour
     {
         string headline = scenario.BuildHeadline(quest);
         if (!string.IsNullOrWhiteSpace(headline))
-            Speak(headline, () => RunBeatAction(quest, AIAssistantState.Alert, ScenarioAction.LookAtUser, null));
+            Speak(headline, () => RunBeatAction(quest, AIAssistantState.Alert, ScenarioAction.LookAtUser, null, 0));
 
         foreach (ScenarioBeat beat in scenario.beats)
         {
@@ -724,12 +732,14 @@ public class AIAssistantBrain : MonoBehaviour
             // 지역 변수로 받아 캡처한다. 루프 변수를 그대로 캡처하면 모든 대사가
             // 마지막 비트의 행동을 실행하게 된다.
             ScenarioBeat current = beat;
-            Speak(current.line, () => RunBeatAction(quest, current.mood, current.action, current.llmPrompt));
+            Speak(current.line,
+                  () => RunBeatAction(quest, current.mood, current.action, current.llmPrompt, current.focusResidueId));
         }
     }
 
     /// <summary>대사에 붙은 행동 하나를 실행한다.</summary>
-    private void RunBeatAction(QuestDefinition quest, AIAssistantState mood, ScenarioAction action, string llmPrompt)
+    private void RunBeatAction(QuestDefinition quest, AIAssistantState mood, ScenarioAction action,
+                               string llmPrompt, int focusResidueId)
     {
         SetState(mood);
 
@@ -748,7 +758,14 @@ public class AIAssistantBrain : MonoBehaviour
             case ScenarioAction.FlashMutationSite:
                 // SelectResidue가 아니라 FlashResidue를 쓴다. 선택 이벤트를 쏘면
                 // 그걸 받은 ExplainSelection이 SayNow로 큐를 비워 시나리오가 끊긴다.
-                if (mutationHighlighter != null) mutationHighlighter.FlashAllSites();
+                //
+                // 번호를 특정한 대사("858번 자리를 보세요")는 그 하나만 짚는다. 전부 반짝이면
+                // 말한 번호와 화면의 자리가 이어지지 않아, 정작 짚어 보이는 의미가 사라진다.
+                if (mutationHighlighter != null)
+                {
+                    if (focusResidueId > 0) mutationHighlighter.FocusResidue(focusResidueId);
+                    else mutationHighlighter.FlashAllSites();
+                }
                 if (follower != null && follower.anchorTarget != null)
                     follower.FocusOn(follower.anchorTarget);
                 break;
