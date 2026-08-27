@@ -11,7 +11,13 @@ using UnityEngine;
 /// 없이 기존 코드 스타일과 맞춘다. 배경일 뿐이라 콜라이더는 만들자마자 지운다 —
 /// 남겨두면 StructureLevelController/MouseWorldSelector의 클릭 레이캐스트가 이걸 맞고
 /// 엉뚱하게 반응한다.
+///
+/// [ExecuteAlways]로 에디터(Play 모드가 아닐 때)에서도 Awake가 돌아 나선이 바로 보이게 한다 —
+/// 그래야 배치 메뉴로 만든 뒤 창문 위치에 맞춰 손으로 옮길 때 Scene 뷰에서 눈으로 보며 옮길 수 있다.
+/// 이 속성 때문에 Play 모드 진입/스크립트 재컴파일마다 Awake가 다시 불릴 수 있으므로,
+/// 다시 빌드하기 전에 이전 자식들을 먼저 지워 나선이 겹쳐 쌓이지 않게 한다.
 /// </summary>
+[ExecuteAlways]
 public class DnaHelixBackdrop : MonoBehaviour
 {
     [Header("형태")]
@@ -51,7 +57,17 @@ public class DnaHelixBackdrop : MonoBehaviour
     private Renderer _highlightRenderer;
     private MaterialPropertyBlock _mpb;
 
-    private void Awake() => Build();
+    private void Awake() => Rebuild();
+
+    /// <summary>기존 자식(이전 Build 결과)을 지우고 다시 만든다. ExecuteAlways 때문에
+    /// Awake가 여러 번 불려도(에디터 재컴파일, Play 모드 진입 등) 나선이 중복 생성되지 않는다.</summary>
+    private void Rebuild()
+    {
+        for (int i = transform.childCount - 1; i >= 0; i--)
+            DestroyNow(transform.GetChild(i).gameObject);
+
+        Build();
+    }
 
     private void Update()
     {
@@ -152,6 +168,15 @@ public class DnaHelixBackdrop : MonoBehaviour
     private static void StripCollider(GameObject go)
     {
         Collider collider = go.GetComponent<Collider>();
-        if (collider != null) Destroy(collider);
+        if (collider != null) DestroyNow(collider);
+    }
+
+    /// <summary>[ExecuteAlways]라 Build/Rebuild가 에디터(Play 아님)에서도 돈다. 그때 Destroy를
+    /// 부르면 "Destroy may not be called from edit mode" 에러가 나고 대상이 안 지워진다 —
+    /// 실행 모드에 맞는 쪽을 골라 부른다.</summary>
+    private static void DestroyNow(UnityEngine.Object target)
+    {
+        if (Application.isPlaying) Destroy(target);
+        else DestroyImmediate(target);
     }
 }

@@ -23,6 +23,9 @@ public class IntroDirector : MonoBehaviour
     [Tooltip("구조 최상위(Ribbon)에서 '이전'을 한 번 더 누르면(OnExitRequested) 현재 사건을 접고 " +
              "퀘스트 선택으로 돌아온다. 비워두면 씬에서 자동 탐색")]
     public StructureLevelController levelController;
+    [Tooltip("비워두면 씬에서 찾는다. '이전'으로 사건을 접고 돌아올 때 카메라를 인체 단계(Level0)로 " +
+             "되돌리는 데 쓴다.")]
+    public CameraTransitionDirector cameraDirector;
     [Tooltip("비워두면 Camera.main")]
     public Camera targetCamera;
 
@@ -57,9 +60,9 @@ public class IntroDirector : MonoBehaviour
     [Tooltip("인사가 끝난 뒤 보드를 펼치기까지 기다리는 시간")]
     public float beatBeforeBoard = 0.35f;
     [Tooltip("비서의 인사가 끝나기를 기다리는 최대 시간. 넘으면 그냥 진행한다.")]
-    public float maxWaitForGreeting = 12f;
+    public float maxWaitForGreeting = 20f;
     [Tooltip("고른 단백질 설명(대본 + LLM 응답)이 끝나기를 기다리는 최대 시간. 넘으면 그냥 진행한다.")]
-    public float maxWaitForTargetIntro = 20f;
+    public float maxWaitForTargetIntro = 40f;
     [Tooltip("선택 확인 대사 뒤 퀘스트를 시작하기까지의 간격")]
     public float beatBeforeQuest = 1.2f;
 
@@ -86,6 +89,7 @@ public class IntroDirector : MonoBehaviour
         if (board == null) board = FindFirstObjectByType<QuestSelectionBoard>();
         if (session == null) session = FindFirstObjectByType<QuestSession>();
         if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
+        if (cameraDirector == null) cameraDirector = FindFirstObjectByType<CameraTransitionDirector>();
 
         // 게임이 실제로 시작(Play)된 시점이므로 비서를 켠다.
         if (assistant != null) assistant.gameObject.SetActive(true);
@@ -100,12 +104,14 @@ public class IntroDirector : MonoBehaviour
     {
         if (board != null) board.OnQuestSelected += HandleQuestSelected;
         if (levelController != null) levelController.OnExitRequested += HandleExitRequested;
+        if (session != null) session.OnQuestCompleted += HandleQuestCompleted;
     }
 
     private void OnDisable()
     {
         if (board != null) board.OnQuestSelected -= HandleQuestSelected;
         if (levelController != null) levelController.OnExitRequested -= HandleExitRequested;
+        if (session != null) session.OnQuestCompleted -= HandleQuestCompleted;
     }
 
     private void Start()
@@ -160,10 +166,33 @@ public class IntroDirector : MonoBehaviour
 
     private void HandleExitRequested() => ReturnToQuestSelection();
 
+    /// <summary>
+    /// 5단계(Quest5_Verification)까지 다 끝내 QuestSession.OnQuestCompleted가 발생하면,
+    /// 사용자가 '이전'을 누르지 않아도 자동으로 연구실로 돌아와 다음 사건을 고를 수 있게 한다.
+    /// 비서가 "사건 해결 완료!" 대사를 다 마칠 때까지 기다렸다가 시작한다 — 대사 도중에
+    /// 카메라가 줌아웃을 시작하면 완료 축하 대사가 이동 중에 묻혀 버린다.
+    /// </summary>
+    private void HandleQuestCompleted(QuestDefinition quest) => StartCoroutine(ReturnAfterCompletionRoutine());
+
+    private IEnumerator ReturnAfterCompletionRoutine()
+    {
+        yield return WaitForAssistantIdle(10f);
+        ReturnToQuestSelection();
+    }
+
     private IEnumerator ReturnToQuestSelectionRoutine()
     {
         IsRunning = true;
         _chosen = null;
+
+        // 카메라를 인체 단계(Level0)로 되돌린다. HideStage부터 먼저 부르면 무대가 뚝 꺼지며
+        // 되돌아가는 그림 없이 화면이 끊기고, 보드/비서도 아직 분자 옆 카메라 자리를 기준으로
+        // 배치돼버린다. 트랜지션이 끝나 카메라가 실제로 인체 단계에 도착한 뒤에 정리한다.
+        if (cameraDirector != null)
+        {
+            cameraDirector.GoTo(QuestLevel.Level0_Body);
+            yield return new WaitUntil(() => !cameraDirector.IsTransitioning);
+        }
 
         HideStage();
         PlaceAssistantForIntro();
@@ -173,7 +202,7 @@ public class IntroDirector : MonoBehaviour
         if (assistant != null)
         {
             assistant.ResetConversation();
-            assistant.SpeakNow("다른 사건을 골라볼까?");
+            assistant.SpeakNow("다른 사건을 골라볼까요?");
         }
 
         yield return SelectAndStartQuestRoutine();
@@ -340,6 +369,11 @@ public class IntroDirector : MonoBehaviour
 
         while (assistant != null && assistant.IsBusy && Time.time < deadline)
             yield return null;
+
+        // 시간이 다 돼서 빠져나올 때 아직 말하는 중이면 여기서 확실히 끊는다. 안 그러면
+        // 남은 말풍선/음성이 다음 장면(보드)이 뜬 뒤에도 계속 재생되다가, 그 위에서
+        // 시작되는 다음 대사와 뒤섞여 "말이 겹친다"는 인상을 준다.
+        if (assistant != null && assistant.IsBusy) assistant.ResetConversation();
     }
 
     /// <summary>
@@ -355,8 +389,26 @@ public class IntroDirector : MonoBehaviour
 
         yield return null;
 
-        while (assistant != null && assistant.IsBusyOrWaiting && Time.time < deadline)
+        // idle로 읽힌 첫 프레임을 바로 믿지 않는다. LLM 응답 수신(AIChatBackend.PendingRequests)과
+        // 그 응답을 말풍선 큐에 넣는 것(AIAssistantSpeechBubble.Say)은 서로 다른 컴포넌트가 각자
+        // 처리하는 두 단계라, "요청은 막 끝났는데 다음 대사가 아직 큐에 들어가기 전" 같은 아주
+        // 짧은 idle 틈이 한두 프레임 생길 수 있다. 그 틈에 여기서 빠져나가면 곧바로
+        // session.StartQuest() -> 카메라 전환이 시작되고, QuestLevelBinder가 그 순간
+        // bubble.Pause()로 화면을 지워버려 방금 큐에 들어간 "자, 들어가보자" 대사가 말 중간에
+        // 뚝 끊긴다. 여러 프레임 연속으로 idle이어야만 진짜로 다 끝난 것으로 본다.
+        const int settleFrames = 6;
+        int idleStreak = 0;
+        while (Time.time < deadline)
+        {
+            bool idle = assistant == null || !assistant.IsBusyOrWaiting;
+            idleStreak = idle ? idleStreak + 1 : 0;
+            if (idleStreak >= settleFrames) break;
             yield return null;
+        }
+
+        // WaitForAssistant()와 같은 이유. 여기서 시간이 다 되면 바로 다음이 줌인이므로,
+        // 설명이 끝맺지 못한 채로 남아 있으면 트리거 대사가 줌인 연출 위에 걸쳐 들린다.
+        if (assistant != null && assistant.IsBusyOrWaiting) assistant.ResetConversation();
     }
 
     private IEnumerator FadeOverlay(float from, float to)

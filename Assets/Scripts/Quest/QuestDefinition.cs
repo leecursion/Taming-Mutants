@@ -38,6 +38,10 @@ public class QuestDefinition : ScriptableObject
     public string structureStreamingPath = "structures/P01116.json";
     [Tooltip("변이 잔기 번호. MutationHighlighter가 강조할 위치.")]
     public int[] mutationResidueIds = { 12 };
+    [Tooltip("변이 자리의 별명. 예: '고장 난 스위치 자리'. 비서가 번호 대신 이 이름으로 부르고, " +
+             "화면의 번호표에도 함께 적힌다 — 중학생에게 '12번'은 기억에 남지 않는다. " +
+             "비워두면 예전처럼 번호로만 부른다.")]
+    public string mutationSiteAlias;
     [Tooltip("표적 포켓 이름. 비서 대사와 LLM 컨텍스트에 쓰인다.")]
     public string targetPocketLabel = "Switch-II Pocket";
 
