@@ -87,9 +87,10 @@ public static class QuestScenarioSetupMenu
                 },
                 new ScenarioBeat
                 {
-                    line = "지금 반짝이는 저 자리 보이시죠? 12번 자리예요. 설계도에서 딱 한 글자가 바뀐 곳이에요.",
+                    line = "지금 혼자 떨고 있는 저 자리 보이시죠? 12번 자리예요. 설계도에서 딱 한 글자가 바뀐 곳이에요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
+                    focusResidueId = 12,
                 },
                 new ScenarioBeat
                 {
@@ -138,9 +139,10 @@ public static class QuestScenarioSetupMenu
                 },
                 new ScenarioBeat
                 {
-                    line = "반짝이는 858번 자리를 보세요. 여기 글자가 바뀌면서 안테나가 눌린 채로 굳어 버렸어요.",
+                    line = "지직거리는 858번 자리를 보세요. 여기 글자가 바뀌면서 안테나가 눌린 채로 굳어 버렸어요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
+                    focusResidueId = 858,
                 },
                 new ScenarioBeat
                 {
@@ -185,6 +187,7 @@ public static class QuestScenarioSetupMenu
                     line = "그런데 구멍 앞을 지키는 문지기 자리가 더 커다란 모양으로 바뀌어 버렸어요. 315번 자리예요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.FlashMutationSite,
+                    focusResidueId = 315,
                 },
                 new ScenarioBeat
                 {
@@ -239,7 +242,9 @@ public static class QuestScenarioSetupMenu
                 },
                 new ScenarioBeat
                 {
-                    line = "설계도에서 508번 글자가 통째로 빠졌거든요. 반짝이는 507번과 509번 사이, 저기가 빈자리예요.",
+                    // 이 대사만은 두 자리를 함께 부르므로 focusResidueId를 비워 둔다(=0).
+                    // 507과 509를 같이 짚어야 "그 사이가 빈자리"라는 말이 성립한다.
+                    line = "설계도에서 508번 글자가 통째로 빠졌거든요. 지직거리는 507번과 509번 사이, 저기가 빈자리예요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
                 },
@@ -290,9 +295,10 @@ public static class QuestScenarioSetupMenu
                 },
                 new ScenarioBeat
                 {
-                    line = "반짝이는 220번 자리를 보세요. 여기가 바뀌면서 옆구리에 틈이 생겼어요. 그 틈 때문에 무너지는 거예요.",
+                    line = "불안하게 떨고 있는 220번 자리를 보세요. 여기가 바뀌면서 옆구리에 틈이 생겼어요. 그 틈 때문에 무너지는 거예요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
+                    focusResidueId = 220,
                 },
                 new ScenarioBeat
                 {

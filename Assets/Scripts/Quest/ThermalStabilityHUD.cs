@@ -15,6 +15,13 @@ public class ThermalStabilityHUD : MonoBehaviour
     [Header("표시")]
     public Vector2 cornerMargin = new Vector2(28f, 28f);
     public float panelWidth = 380f;
+    [Tooltip("HUD 전체 크기 배율. 글자 크기·막대 높이·여백이 코드에 픽셀로 박혀 있어 하나씩 " +
+             "줄이면 비율이 깨지므로, 완성된 패널을 통째로 축소한다. 좌상단 모서리를 기준으로 " +
+             "줄어들어 cornerMargin은 그대로 지켜진다.\n\n" +
+             "사건 5는 이 HUD 말고도 화면 아래 온도 조절기와 왼쪽 후보물질 판넬이 동시에 떠 있어, " +
+             "다른 사건의 패널과 같은 크기여도 화면이 유독 빡빡하다.")]
+    [Range(0.4f, 1.5f)]
+    public float uiScale = 0.72f;
 
     [Header("홀로그램 톤")]
     public Color accentColor = new Color(0.35f, 0.85f, 1f);
@@ -129,6 +136,11 @@ public class ThermalStabilityHUD : MonoBehaviour
         rootRect.pivot = new Vector2(0f, 1f);
         rootRect.anchoredPosition = new Vector2(cornerMargin.x, -cornerMargin.y);
         rootRect.sizeDelta = new Vector2(panelWidth, 10f); // 높이는 fitter가 정한다
+
+        // 축소는 레이아웃이 아니라 렌더링 단계에서 건다. 폭·글자 크기·여백을 각각 곱해 줄이면
+        // 9-slice 모서리 곡률과 폰트 힌팅만 따로 놀아 비율이 어긋난다. 스케일로 줄이면
+        // 완성된 패널이 그대로 작아진다. pivot이 좌상단이라 모서리 여백은 유지된다.
+        rootRect.localScale = Vector3.one * Mathf.Max(uiScale, 0.05f);
 
         CreateLayer(rootGo.transform, "Glow", HoloSpriteFactory.Glow(),
             new Color(accentColor.r, accentColor.g, accentColor.b, 0.16f), 18f);

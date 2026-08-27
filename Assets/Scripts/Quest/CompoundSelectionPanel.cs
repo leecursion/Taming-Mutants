@@ -99,13 +99,18 @@ public class CompoundSelectionPanel : MonoBehaviour
     public Vector2 apparentSizeDistanceClamp = new Vector2(0.5f, 4f);
 
     [Header("줌인 오버라이드 (예: 사건 5 열안정성 카메라 클로즈업)")]
-    [Tooltip("켜져 있는 동안은 '구조 옆 사선' 대신 카메라 바로 옆에 크게 고정한다 — 카메라가 구조 " +
+    [Tooltip("켜져 있는 동안은 '구조 옆 사선' 대신 카메라 바로 옆에 고정한다 — 카메라가 구조 " +
              "전체가 아니라 좁은 부위로 확 당겨지면 구조 기준 배치가 의미가 없어지기 때문이다. " +
              "ThermalStabilityController처럼 클로즈업 연출을 트는 쪽이 SetZoomOverride()로 켜고 끈다. " +
-             "인스펙터 기본값(구조 옆 사선)에는 영향을 주지 않는다.")]
+             "placeRelativeToCamera가 기본값(켜짐)이면 배치 방식이 이미 같으므로 실질적인 차이는 없다.")]
     public bool zoomOverrideActive;
-    [Tooltip("줌인 오버라이드 중 사용할 크기 배율 (panelScale 대신 사용)")]
-    public float zoomOverridePanelScale = 1.1f;
+    [Tooltip("줌인 오버라이드 중 사용할 크기 배율. 0 이하면 panelScale을 그대로 쓴다(권장). " +
+             "이 값은 '구조 옆 사선'이 기본이던 시절, 클로즈업 동안만 카메라 옆으로 옮기면서 " +
+             "거리가 달라지는 것을 보정하려고 크게 잡아 둔 것이다. placeRelativeToCamera가 " +
+             "기본값이 된 지금은 클로즈업 중에도 카메라와의 거리가 그대로라, 여기에 별도 배율을 " +
+             "주면 사건 5에서만 판넬이 다른 사건보다 훨씬 크게 보인다 — " +
+             "[[compound-panel-placement-final]]")]
+    public float zoomOverridePanelScale;
 
     [Header("표시 레벨 연동")]
     [Tooltip("아미노산(원자) 레벨에서만 패널이 표시됨. 비우면 씬에서 자동 탐색")]
@@ -246,7 +251,10 @@ public class CompoundSelectionPanel : MonoBehaviour
 
         if (zoomOverrideActive)
         {
-            PlaceBesideUser(zoomOverridePanelScale);
+            // 0 이하면 평소와 같은 크기로 둔다. 클로즈업 중에도 카메라 기준 오프셋은 그대로라
+            // 화면에서 보이는 크기가 달라질 이유가 없다 — 여기에 별도 배율을 주면 그 사건에서만
+            // 판넬이 유독 커 보인다(사건 5에서 실제로 그렇게 보였다).
+            PlaceBesideUser(zoomOverridePanelScale > 0f ? zoomOverridePanelScale : panelScale);
             return;
         }
 
@@ -395,8 +403,12 @@ public class CompoundSelectionPanel : MonoBehaviour
     /// <summary>
     /// ThermalStabilityController처럼 카메라를 구조의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
     /// 연출 시작/종료에 맞춰 호출한다. true면 "구조 옆 사선" 배치를 잠시 멈추고 카메라 옆에
-    /// 크게 고정하며, false면 원래 배치 규칙으로 되돌린다. LateUpdate가 매 프레임 재배치하므로
+    /// 고정하며, false면 원래 배치 규칙으로 되돌린다. LateUpdate가 매 프레임 재배치하므로
     /// 카메라가 계속 움직이는 클로즈업 도중에도 계속 따라간다.
+    ///
+    /// 크기는 건드리지 않는다(zoomOverridePanelScale 기본값 0 = panelScale 그대로).
+    /// placeRelativeToCamera가 기본값이 된 뒤로는 이 스위치가 켜지든 말든 카메라와의 거리가
+    /// 같아서, 크기까지 바꾸면 그 사건에서만 판넬이 커 보이는 문제가 된다.
     /// </summary>
     public void SetZoomOverride(bool active)
     {

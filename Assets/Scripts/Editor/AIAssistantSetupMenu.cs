@@ -394,7 +394,10 @@ public static class AIAssistantSetupMenu
         // 여기 값은 에디터에서 미리보기용으로만 쓰인다.
         scaler.dynamicPixelsPerUnit = 1f;
 
-        // GraphicRaycaster는 붙이지 않는다 — 상호작용이 없고, 원자 선택 클릭을 가로챌 이유도 없다.
+        // GraphicRaycaster는 여기서 붙이지 않는다 — 이 시점의 말풍선에는 누를 것이 없고,
+        // 원자 선택 클릭을 가로챌 이유도 없다. 실행 중 건너뛰기 버튼이 만들어질 때
+        // AIAssistantSpeechBubble.EnsureSkipButton()이 그때 붙인다(그 버튼 말고는 모든
+        // 그래픽의 raycastTarget이 꺼져 있어 클릭을 가로채지 않는다).
 
         var bubbleGo = new GameObject("Bubble");
         bubbleGo.transform.SetParent(root.transform, false);

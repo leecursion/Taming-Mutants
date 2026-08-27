@@ -35,7 +35,40 @@ public class ThermalStabilityController : MonoBehaviour
              "비우면 씬에서 자동 탐색.")]
     public AIAssistantFollower assistantFollower;
 
+    [Header("슬라이더 안내")]
+    [Tooltip("슬라이더가 실제로 화면에 나타나는 순간 사용법을 설명할 비서. 비우면 씬에서 자동 탐색.")]
+    public AIAssistantBrain assistant;
+    [TextArea(2, 4)]
+    [Tooltip("슬라이더가 뜨는 순간 말할 대사. 단계 브리핑에 적어 두면 안 된다 — 브리핑은 리본 " +
+             "단계에서 재생되는데 슬라이더는 아미노산 단계에서만 나타나므로, 화면에 없는 물건의 " +
+             "사용법을 먼저 듣게 된다. 물건이 나타나는 쪽이 직접 설명해야 말과 화면이 맞는다.")]
+    public string[] sliderIntroLines =
+    {
+        "아래에 온도 조절기가 나왔어요. 20도부터 60도까지 움직여 볼 수 있어요.",
+        "온도를 올릴수록 흔들림이 커지는 게 보이시죠? 체온인 37도에서도 이미 꽤 불안정해요.",
+        "더 올리면 주변에 흐릿한 입자가 늘어나요. 단백질끼리 엉겨 붙는다는 위험 신호예요.",
+    };
+
+    [TextArea(2, 4)]
+    [Tooltip("온도 조절기를 보다가 나선 단계로 되돌아왔을 때 말할 대사. 조절기와 HUD는 원자 " +
+             "단계에서만 뜨는데, 되돌아온 화면에는 아무 설명이 없어 '조절기가 사라졌다'로 보인다. " +
+             "어디로 가야 다시 나오는지 그 자리에서 알려준다.")]
+    public string[] helixReturnLines =
+    {
+        "온도 조절기는 원자 단계에서만 쓸 수 있어요. 여기서 한 번 더 누르면 다시 나와요.",
+    };
+    [TextArea(2, 4)]
+    [Tooltip("온도 조절기를 보다가 리본(전체 구조) 단계까지 되돌아왔을 때 말할 대사.")]
+    public string[] ribbonReturnLines =
+    {
+        "온도 조절기는 원자 단계에서만 쓸 수 있어요. 구조를 두 번 눌러 원자까지 내려가면 다시 나와요.",
+    };
+
     private bool _isActiveQuest;
+    private bool _sliderExplained;
+    // 지금 온도 조절기가 떠 있는지. 되돌아가는 순간에만 안내하려고 들고 있는다 —
+    // 사건을 막 시작해 리본을 보고 있는 동안에는 2화 브리핑이 이미 같은 말을 한다.
+    private bool _thermalStageActive;
     [Tooltip("wobble의 기준점이 되는 변이 잔기 번호 (Y220C)")]
     public int mutationResidueId = 220;
     public ThermalStabilityHUD hud;
@@ -66,8 +99,11 @@ public class ThermalStabilityController : MonoBehaviour
 
     [Header("카메라 전환 연출")]
     public float cameraTransitionDuration = 1.1f;
-    [Tooltip("전환 후 변이 자리까지의 거리(unit)")]
-    public float cameraCloseUpDistance = 0.9f;
+    [Tooltip("전환 후 변이 자리까지의 거리(unit). 이 값 하나가 사건 5에서 원자 구조가 화면에서 " +
+             "얼마나 크게 보이는지를 정한다 — 다른 사건은 이 클로즈업이 없어 LevelRig의 " +
+             "Level2_Protein 카메라 자리(구조 중심에서 3.0 unit)를 그대로 쓴다. 0.9로 두면 사건 5만 " +
+             "구조가 3배 넘게 확대돼 보였다. 줄이려면(=구조를 작게 보이게 하려면) 이 값을 키운다.")]
+    public float cameraCloseUpDistance = 1.5f;
 
     /// <summary>0(minCelsius)~1(maxCelsius) 정규화된 현재 온도.</summary>
     public float Normalized01 { get; private set; }
@@ -104,6 +140,7 @@ public class ThermalStabilityController : MonoBehaviour
         if (questCatalog == null) questCatalog = FindFirstObjectByType<DockingQuestCatalog>(FindObjectsInactive.Include);
         if (selectionPanel == null) selectionPanel = FindFirstObjectByType<CompoundSelectionPanel>(FindObjectsInactive.Include);
         if (assistantFollower == null) assistantFollower = FindFirstObjectByType<AIAssistantFollower>(FindObjectsInactive.Include);
+        if (assistant == null) assistant = FindFirstObjectByType<AIAssistantBrain>(FindObjectsInactive.Include);
         _transparentMaterial = BuildTransparentMaterial();
     }
 
@@ -126,6 +163,7 @@ public class ThermalStabilityController : MonoBehaviour
     private void HandleQuestStarted(DockingQuestDefinition def)
     {
         _isActiveQuest = def != null && def.id == activeForQuestId;
+        _sliderExplained = false; // 사건을 새로 시작하면 슬라이더 설명도 처음부터
         if (!_isActiveQuest) ExitThermalStage();
     }
 
@@ -134,8 +172,22 @@ public class ThermalStabilityController : MonoBehaviour
     private void HandleLevelChanged(StructureLevelController.ViewLevel level)
     {
         if (!_isActiveQuest) return;
-        if (level == StructureLevelController.ViewLevel.AminoAcid) EnterThermalStage();
-        else ExitThermalStage();
+
+        if (level == StructureLevelController.ViewLevel.AminoAcid)
+        {
+            EnterThermalStage();
+            return;
+        }
+
+        bool wasShowing = _thermalStageActive;
+        ExitThermalStage();
+
+        // 조절기를 한 번도 못 본 상태(사건을 막 시작해 리본을 보고 있는 중)에서는 말하지 않는다 —
+        // 그때는 2화 브리핑이 이미 "안쪽 원자까지 들어가면 온도 조절기가 나와요"라고 말한다.
+        if (!wasShowing) return;
+
+        StartCoroutine(ExplainSliderHiddenRoutine(
+            level == StructureLevelController.ViewLevel.Helix ? helixReturnLines : ribbonReturnLines));
     }
 
     private void Update()
@@ -151,6 +203,7 @@ public class ThermalStabilityController : MonoBehaviour
     {
         if (_slider == null) BuildSliderUI();
         _sliderPanel.SetActive(true);
+        _thermalStageActive = true;
 
         IndexAtoms();
         EnsureAggregateParticles();
@@ -167,10 +220,48 @@ public class ThermalStabilityController : MonoBehaviour
 
         SetTemperature(startCelsius);
         _slider.SetValueWithoutNotify(Mathf.InverseLerp(minCelsius, maxCelsius, startCelsius));
+
+        if (!_sliderExplained)
+        {
+            _sliderExplained = true;
+            StartCoroutine(ExplainSliderRoutine());
+        }
+    }
+
+    /// <summary>
+    /// 슬라이더 사용법을 한 프레임 뒤에 말한다.
+    ///
+    /// 이 메서드는 <see cref="StructureLevelController.OnLevelChanged"/>를 타고 불리는데,
+    /// 같은 이벤트를 구독한 <see cref="AIAssistantBrain"/>도 아미노산 단계 해설을 SayNow로
+    /// 말한다. SayNow는 대기 중인 문장을 <b>버리고</b> 교체하므로, 구독자 호출 순서에 따라
+    /// 여기서 먼저 쌓은 대사가 통째로 지워질 수 있다. 한 프레임 양보하면 그 해설이 끝난 뒤에
+    /// 큐 뒤로 붙어, "여기가 가장 안쪽이에요" → "아래에 온도 조절기가 나왔어요" 순서가 된다.
+    /// </summary>
+    private IEnumerator ExplainSliderRoutine()
+    {
+        yield return null;
+
+        if (assistant != null) assistant.SpeakSequence(sliderIntroLines);
+    }
+
+    /// <summary>
+    /// 온도 조절기가 사라진 이유와 다시 보는 방법을 말한다.
+    ///
+    /// <see cref="ExplainSliderRoutine"/>과 같은 이유로 한 프레임 양보한다 —
+    /// <see cref="AIAssistantBrain"/>도 같은 레벨 전환 이벤트를 받아 그 단계 해설을 SayNow로
+    /// 말하는데, 여기서 먼저 쌓으면 그쪽이 큐를 비우며 통째로 지운다. 한 프레임 뒤에 붙이면
+    /// "고르신 구간만 크게 띄웠어요" → "온도 조절기는 원자 단계에서만..." 순서가 된다.
+    /// </summary>
+    private IEnumerator ExplainSliderHiddenRoutine(string[] lines)
+    {
+        yield return null;
+
+        if (assistant != null) assistant.SpeakSequence(lines);
     }
 
     public void ExitThermalStage()
     {
+        _thermalStageActive = false;
         if (_sliderPanel != null) _sliderPanel.SetActive(false);
         if (hud != null) hud.gameObject.SetActive(false);
 

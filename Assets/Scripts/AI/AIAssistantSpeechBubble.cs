@@ -107,6 +107,16 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     public float secondsPerCharacter = 0.045f;
     public float maxHoldSeconds = 12f;
 
+    [Header("건너뛰기 버튼")]
+    [Tooltip("말풍선 아래에 '건너뛰기' 버튼을 띄운다. 누르면 지금 재생 중인 대사 한 개를 " +
+             "즉시 끝내고 다음 대사로 넘어간다(큐에 남은 대사는 그대로 재생된다).")]
+    public bool showSkipButton = true;
+    [Tooltip("직접 만든 버튼을 쓰려면 연결한다. 비워두면 실행 시 말풍선 아래에 자동으로 만든다.")]
+    public Button skipButton;
+    [Tooltip("말풍선 아래 가장자리와 버튼 사이 간격(캔버스 단위). 0 이하면 본문 글자 크기에서 정한다.")]
+    public float skipButtonGap;
+    public string skipButtonLabel = "건너뛰기 ▶";
+
     [Header("등장 연출")]
     public float fadeDuration = 0.25f;
     [Tooltip("등장할 때 시작 스케일. 살짝 튀어나오며 열린다.")]
@@ -133,6 +143,9 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     // 같은 대사를 다시 틀어도 붙은 행동(변이 부위 반짝임 등)은 한 번만 실행한다.
     private bool _currentActionFired;
     private bool _paused;
+    // 건너뛰기 버튼이 켜는 스위치. 지금 재생 중인 대사 하나에만 적용되고, 다음 대사를
+    // 큐에서 꺼낼 때 다시 꺼진다.
+    private bool _skipRequested;
     // 지금 읽고 있는 대사의 소리가 끝났는지. 콜백으로 켜진다.
     private bool _voiceDone = true;
     private float[] _accentAlphas;
@@ -146,6 +159,9 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         if (lookTarget == null && Camera.main != null) lookTarget = Camera.main.transform;
         if (canvasScaler == null) canvasScaler = GetComponent<CanvasScaler>();
         if (tts == null) tts = FindFirstObjectByType<TextToSpeechBackend>(FindObjectsInactive.Include);
+
+        // 폰트 교체와 항상-위 머티리얼 적용보다 먼저 만들어야 버튼의 글자도 함께 처리된다.
+        EnsureSkipButton();
 
         CacheAccentAlphas();
         ApplyOsFont();
@@ -170,6 +186,148 @@ public class AIAssistantSpeechBubble : MonoBehaviour
 
         foreach (var text in GetComponentsInChildren<Text>(includeInactive: true))
             text.font = font;
+    }
+
+    // --- 건너뛰기 버튼 ---
+
+    /// <summary>
+    /// 말풍선 <b>아래</b>에 붙는 건너뛰기 버튼을 준비한다.
+    ///
+    /// 씬(AIAssistantSetupMenu)이 만들어 둔 말풍선에는 이 버튼이 없다. 메뉴를 다시 돌려야만
+    /// 생기게 하면 이미 배치된 비서에는 영영 안 붙으므로, 없으면 실행 시 직접 만든다.
+    ///
+    /// 위치는 <see cref="bubbleRect"/>의 자식으로 두고 앵커를 아래 가장자리 중앙에 건다.
+    /// 그러면 말풍선이 대사 길이에 따라 커지고 작아져도, 비서를 따라 화면을 이동해도
+    /// 버튼이 늘 말풍선 바로 아래에 붙어 다닌다 — 좌표를 따로 따라다니게 계산할 필요가 없다.
+    /// 접히고 펼쳐지는 연출(알파·스케일)과 숨김(SetActive)도 말풍선과 함께 적용된다.
+    /// </summary>
+    private void EnsureSkipButton()
+    {
+        if (!showSkipButton || bubbleRect == null || label == null) return;
+
+        if (skipButton == null) skipButton = BuildSkipButton();
+        if (skipButton == null) return;
+
+        skipButton.onClick.AddListener(SkipCurrent);
+
+        // 이 캔버스에는 지금까지 상호작용이 없어 레이캐스터를 달지 않았다(원자 선택 클릭을
+        // 가로채지 않으려고). 버튼이 생겼으니 필요하다 — 말풍선의 다른 그래픽은 모두
+        // raycastTarget이 꺼져 있어서 이 버튼 말고는 아무것도 클릭을 가로채지 않는다.
+        if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
+
+        var canvas = GetComponent<Canvas>();
+        if (canvas != null && canvas.worldCamera == null) canvas.worldCamera = ResolveCamera();
+
+        // 말풍선 CanvasGroup은 "클릭을 받지 않는 표시물"로 꺼 둔 상태였다. 버튼이 그 안에 있으니 켠다.
+        if (canvasGroup != null)
+        {
+            canvasGroup.interactable = true;
+            canvasGroup.blocksRaycasts = true;
+        }
+    }
+
+    private Button BuildSkipButton()
+    {
+        float fontSize = Mathf.Max(label.fontSize, 1);
+        float gap = skipButtonGap > 0f ? skipButtonGap : fontSize * 0.6f;
+
+        var go = new GameObject("SkipButton", typeof(RectTransform));
+        go.transform.SetParent(bubbleRect, false);
+
+        var rect = (RectTransform)go.transform;
+        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0f); // 말풍선 아래 가장자리 중앙
+        rect.pivot = new Vector2(0.5f, 1f);                      // 거기서 아래로 내려 단다
+        rect.anchoredPosition = new Vector2(0f, -gap);
+        rect.sizeDelta = new Vector2(fontSize * 5.6f, fontSize * 1.9f);
+
+        // 말풍선 본문은 VerticalLayoutGroup이 세로로 쌓는다. 버튼은 그 흐름 밖에 있어야
+        // 패널 안쪽에 한 줄로 끼어들지 않고 아래에 매달린다.
+        go.AddComponent<LayoutElement>().ignoreLayout = true;
+
+        var background = go.AddComponent<Image>();
+        background.sprite = HoloSpriteFactory.Panel();
+        background.type = Image.Type.Sliced;
+        background.color = new Color(0.02f, 0.06f, 0.10f, 0.92f);
+
+        Image stroke = CreateSkipLayer(rect, "Stroke", HoloSpriteFactory.Stroke(),
+                                       new Color(1f, 1f, 1f, 0.7f));
+
+        var textGo = new GameObject("Label", typeof(RectTransform));
+        textGo.transform.SetParent(rect, false);
+        var textRect = (RectTransform)textGo.transform;
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = textRect.offsetMax = Vector2.zero;
+
+        var text = textGo.AddComponent<Text>();
+        text.font = label.font;
+        // 본문보다 작게 둔다. 말풍선에서 가장 큰 글자가 굽는 해상도의 상한을 정하므로
+        // (UpdateTextSharpness/LargestFontSize), 버튼이 그 상한을 밀어 올리면 본문이 흐려진다.
+        text.fontSize = Mathf.Max(Mathf.RoundToInt(fontSize * 0.62f), 8);
+        text.alignment = TextAnchor.MiddleCenter;
+        text.horizontalOverflow = HorizontalWrapMode.Overflow;
+        text.verticalOverflow = VerticalWrapMode.Overflow;
+        text.color = new Color(0.86f, 0.95f, 1f);
+        text.raycastTarget = false;
+        text.text = skipButtonLabel;
+
+        var button = go.AddComponent<Button>();
+        button.targetGraphic = background;
+        var colors = button.colors;
+        colors.normalColor = Color.white;
+        colors.highlightedColor = new Color(1.35f, 1.35f, 1.35f, 1f);
+        colors.pressedColor = new Color(0.75f, 0.75f, 0.75f, 1f);
+        colors.fadeDuration = 0.08f;
+        button.colors = colors;
+
+        // 외곽선은 비서의 상태 색을 따라가게 해 말풍선 테두리와 같은 색으로 보이게 한다.
+        AppendAccentGraphic(stroke);
+
+        return button;
+    }
+
+    private Image CreateSkipLayer(Transform parent, string name, Sprite sprite, Color color)
+    {
+        var go = new GameObject(name, typeof(RectTransform));
+        go.transform.SetParent(parent, false);
+
+        var rect = (RectTransform)go.transform;
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = rect.offsetMax = Vector2.zero;
+
+        var image = go.AddComponent<Image>();
+        image.sprite = sprite;
+        image.type = Image.Type.Sliced;
+        image.color = color;
+        image.raycastTarget = false;
+        return image;
+    }
+
+    /// <summary>상태 색을 따라갈 그래픽 목록에 하나 덧붙인다. 알파 캐시는 Awake에서 뒤이어 만들어진다.</summary>
+    private void AppendAccentGraphic(Graphic graphic)
+    {
+        if (graphic == null) return;
+
+        int length = accentGraphics != null ? accentGraphics.Length : 0;
+        var grown = new Graphic[length + 1];
+        for (int i = 0; i < length; i++) grown[i] = accentGraphics[i];
+        grown[length] = graphic;
+        accentGraphics = grown;
+    }
+
+    /// <summary>
+    /// 지금 재생 중인 대사 하나를 즉시 끝내고 다음 대사로 넘어간다. 건너뛰기 버튼이 부른다.
+    ///
+    /// 큐를 비우지는 않는다 — 한 번에 여러 문장을 쌓아 두는 브리핑에서 큐째 버리면
+    /// 버튼 한 번에 단계 설명이 통째로 사라진다. "이 말풍선 하나만" 넘긴다.
+    /// </summary>
+    public void SkipCurrent()
+    {
+        if (_paused || !_hasCurrent) return;
+
+        _skipRequested = true;
+        StopVoice(); // 소리가 남아 있으면 다음 대사와 겹쳐 들린다
     }
 
     /// <summary>
@@ -650,6 +808,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     public void SayNow(string message, Action onShown = null)
     {
         StopVoice();
+        _skipRequested = false;
         _pending.Clear();
         if (_runner != null) StopCoroutine(_runner);
         _runner = null;
@@ -659,6 +818,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     public void Hide()
     {
         StopVoice();
+        _skipRequested = false;
         _pending.Clear();
         _hasCurrent = false;
         if (_runner != null) StopCoroutine(_runner);
@@ -708,6 +868,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
                 _current = _pending.Dequeue();
                 _hasCurrent = true;
                 _currentActionFired = false;
+                _skipRequested = false; // 건너뛰기는 대사 하나에만 적용된다
             }
 
             yield return ShowRoutine(_current);
@@ -716,6 +877,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
             if (_paused) continue;
 
             _hasCurrent = false;
+            _skipRequested = false;
         }
 
         yield return HideRoutine();
@@ -789,6 +951,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
             while (!_voiceDone && Time.time < deadline)
             {
                 if (_paused) yield break;
+                if (_skipRequested) break;
                 yield return null;
             }
 
@@ -811,7 +974,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         float elapsed = 0f;
         while (elapsed < seconds)
         {
-            if (_paused) yield break;
+            if (_paused || _skipRequested) yield break;
 
             elapsed += Time.deltaTime;
             yield return null;
@@ -844,6 +1007,8 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         while (visible < message.Length)
         {
             if (_paused) yield break;
+            // 건너뛰면 타이핑을 끝까지 돌리지 않는다. 호출한 쪽이 곧바로 전문을 한 번에 넣는다.
+            if (_skipRequested) yield break;
 
             carry += Time.deltaTime * charactersPerSecond;
             while (carry >= 1f && visible < message.Length)
@@ -945,6 +1110,10 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     {
         if (canvasGroup != null) canvasGroup.alpha = alpha;
         if (bubbleRect != null) bubbleRect.localScale = Vector3.one * scale;
+
+        // 접히는 중(거의 안 보이는 상태)의 건너뛰기 버튼은 눌리면 안 된다 —
+        // 보이지도 않는 버튼이 그 자리의 클릭을 삼키면 고장으로 보인다.
+        if (skipButton != null && canvasGroup != null) canvasGroup.blocksRaycasts = alpha > 0.5f;
     }
 
     private static float EaseOutBack(float t)
