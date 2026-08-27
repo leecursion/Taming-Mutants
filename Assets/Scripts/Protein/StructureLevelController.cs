@@ -62,12 +62,12 @@ public class StructureLevelController : MonoBehaviour
              "Helix 단계에서는 이 값이 곧 '파면이 이 세그먼트에 닿기까지의 지연'이 된다.")]
     public float clickHintPhaseStep = 0.35f;
 
-    [Header("표적 잔기 띠 (나선 단계)")]
-    [Tooltip("나선 단계에서 표적 잔기(변이 자리)에 해당하는 세그먼트만 따로 표시한다. " +
-             "리본에서 번호표로 '858번'을 알려주고 → 나선에서 그 자리가 나선의 어디쯤인지 보여주고 → " +
-             "아미노산에서 그 원자를 보는, 세 단계가 이어지는 지점이다. 이게 없으면 나선 단계는 " +
-             "'아무 데나 누르세요' 말고는 알려주는 것이 없다.")]
-    public bool markTargetResiduesOnHelix = true;
+    [Header("표적 잔기 띠")]
+    [Tooltip("표적 잔기(변이 자리)에 해당하는 리본/나선 조각을 '고장 난 자리'로 표시한다. " +
+             "변이 부위 플리커는 원자에 붙어 있는데 원자는 아미노산 단계 전까지 통째로 꺼져 있어, " +
+             "이 표시가 없으면 리본·나선 단계에서는 변이 자리에 아무 반응이 없다 — " +
+             "정작 비서가 '858번 자리를 보세요' 하고 짚는 도입부가 리본 단계다.")]
+    public bool markTargetResidues = true;
     [Tooltip("표적 잔기 띠 색. 변이 부위 강조색과 맞춰 두면 단계가 바뀌어도 같은 자리로 읽힌다.")]
     public Color targetResidueBandColor = new Color(1f, 0.2f, 0.18f);
 
@@ -86,6 +86,20 @@ public class StructureLevelController : MonoBehaviour
     public float maxRayDistance = 100f;
 
     public ViewLevel CurrentLevel { get; private set; } = ViewLevel.Ribbon;
+
+    /// <summary>
+    /// 지금 확대해 보고 있는 구간이 실제로 무엇인가 — 나선인지, 가닥인지, 느슨한 고리인지.
+    ///
+    /// <see cref="helixRegions"/>는 이름과 달리 "확대해 볼 범위"일 뿐이고, 그 범위가 진짜
+    /// 나선이라는 보장이 없다. 실제 이차구조는 <see cref="SecondaryStructureAssigner"/>가
+    /// 주쇄 수소결합으로 따로 판정하며 리본 메시 모양도 그 판정을 따른다. 그래서 예컨대
+    /// KRAS 12번(P-loop)이나 p53 220번 주변을 구간으로 잡으면 화면에는 고리나 화살표가 뜬다.
+    ///
+    /// 이 값이 없으면 비서가 어떤 구간이든 "돌돌 말린 나선"이라고 부르게 되어, 말과 화면이
+    /// 어긋난다. <see cref="AIAssistantBrain"/>이 이 값을 보고 대사를 고른다.
+    /// </summary>
+    public SecondaryStructureAssigner.Type ActiveRegionStructure { get; private set; }
+        = SecondaryStructureAssigner.Type.Loop;
 
     /// <summary>
     /// true인 동안 클릭으로 단계를 내려가지 못한다.
@@ -135,8 +149,11 @@ public class StructureLevelController : MonoBehaviour
     private int _activeHelixIndex = -1;
     // 구간 필터와 무관하게 아미노산 단계에서 항상 표시할 잔기 (도킹 타깃/포켓 등 — QuestCatalog가 주입)
     private readonly HashSet<int> _alwaysVisibleResidues = new HashSet<int>();
-    // 나선 단계에서 띠로 짚어줄 잔기 (변이 자리 — QuestSession이 주입)
+    // 리본/나선 단계에서 띠로 짚어줄 잔기 (변이 자리 — QuestSession이 주입)
     private readonly HashSet<int> _targetResidues = new HashSet<int>();
+    // 위 잔기에 실제로 붙은 표시들. 잔기 하나가 리본 조각 하나 + 나선 조각 하나를 가질 수 있다.
+    private readonly Dictionary<int, List<PulseHighlight>> _targetMarkers =
+        new Dictionary<int, List<PulseHighlight>>();
     // 아미노산 단계 중앙 정렬용: CA 트레이스 캐시 + 전체 구조의 로컬 중심 + 현재 적용된 이동량
     private List<KeyValuePair<int, Vector3>> _caTrace;
     private Vector3 _fullCenterLocal;
@@ -206,6 +223,10 @@ public class StructureLevelController : MonoBehaviour
         foreach (var mesh in _builtMeshes)
             if (mesh != null) Destroy(mesh);
         _builtMeshes.Clear();
+
+        // 표시는 방금 지운 조각들에 붙어 있었다. 비워두지 않으면 다음 구조에서 이미 파괴된
+        // 컴포넌트를 붙잡고 있게 된다.
+        _targetMarkers.Clear();
 
         _activeHelixIndex = -1;
     }
@@ -282,6 +303,10 @@ public class StructureLevelController : MonoBehaviour
             GameObject seg = CreatePiece(piece.mesh, _ribbonRoot, segColor, $"Ribbon_{piece.resId}");
             seg.AddComponent<RibbonSegmentInfo>().residueId = piece.resId;
 
+            // 변이 자리는 클릭 유도에서 빼고 "고장 난 자리" 표시를 얹는다. 리본 단계는
+            // 도입 시나리오가 재생되는 단계라 여기서 반응하지 않으면 "저기를 보세요"가 헛말이 된다.
+            if (TryMarkTargetResidue(seg, piece.resId)) continue;
+
             // 클릭 시 Helix로 내려갈 수 있는 구간만 점멸 — 클릭해도 반응 없는 곳은 그대로 둔다
             if (pulseClickableSegments && FindHelixRegionIndex(piece.resId) >= 0)
                 seg.AddComponent<ClickHintPulse>()
@@ -328,17 +353,7 @@ public class StructureLevelController : MonoBehaviour
                 info.helixRegionIndex = r;
                 info.residueId = resId;
 
-                // 표적 잔기(변이 자리)는 클릭 유도에서 빼고 "고장 난 자리" 표시를 얹는다.
-                // 둘 다 붙이면 같은 렌더러의 _BaseColor를 두 컴포넌트가 매 프레임 번갈아 덮어쓴다.
-                // 아미노산 단계의 변이 원자와 같은 불규칙 플리커를 쓰므로, 단계가 바뀌어도
-                // "지직거리는 저것"이 같은 자리라는 게 그대로 이어진다.
-                if (markTargetResiduesOnHelix && _targetResidues.Contains(resId))
-                {
-                    seg.AddComponent<PulseHighlight>()
-                       .Init(targetResidueBandColor, clickHintPulseSpeed, PulseStyle.Malfunction,
-                             jitterAmplitude: 0f, seed: MutationHighlighter.SeedFor(resId));
-                    continue;
-                }
+                if (TryMarkTargetResidue(seg, resId)) continue;
 
                 // Helix 단계에서는 어느 세그먼트를 눌러도 아미노산으로 내려간다 — 전부가 클릭
                 // 대상이라 상시 점멸은 구분해 주는 정보가 없다. 진입할 때 파면이 구간을 한 번
@@ -352,6 +367,48 @@ public class StructureLevelController : MonoBehaviour
             regionGo.SetActive(false);
             _helixRegionRoots.Add(regionGo.transform);
         }
+    }
+
+    /// <summary>
+    /// 표적 잔기(변이 자리) 조각이면 "고장 난 자리" 표시를 얹고 true를 돌려준다.
+    /// 리본·나선 두 단계가 같은 규칙을 쓴다.
+    ///
+    /// 클릭 유도 점멸과는 배타적이다 — 둘 다 붙이면 같은 렌더러의 _BaseColor를 두 컴포넌트가
+    /// 매 프레임 번갈아 덮어써서 어느 쪽도 제대로 보이지 않는다.
+    ///
+    /// 아미노산 단계의 변이 원자와 <b>같은 seed</b>로 같은 불규칙 플리커를 쓴다. 그래야 단계가
+    /// 바뀌어도 "지직거리는 저것"이 같은 자리라는 게 끊기지 않고 이어진다.
+    /// </summary>
+    private bool TryMarkTargetResidue(GameObject seg, int residueId)
+    {
+        if (!markTargetResidues || !_targetResidues.Contains(residueId)) return false;
+
+        var pulse = seg.AddComponent<PulseHighlight>();
+        pulse.Init(targetResidueBandColor, clickHintPulseSpeed, PulseStyle.Malfunction,
+                   jitterAmplitude: 0f, seed: MutationHighlighter.SeedFor(residueId));
+
+        if (!_targetMarkers.TryGetValue(residueId, out var list))
+        {
+            list = new List<PulseHighlight>();
+            _targetMarkers[residueId] = list;
+        }
+        list.Add(pulse);
+        return true;
+    }
+
+    /// <summary>
+    /// 비서가 그 번호를 말하는 순간 해당 조각을 한 번 강하게 반짝인다.
+    ///
+    /// <see cref="MutationHighlighter.FlashResidue"/>가 부른다. 그쪽은 원자에 붙은 표시만
+    /// 알고 있는데, 원자는 아미노산 단계 전까지 꺼져 있어 리본·나선 단계에서는 아무 일도
+    /// 일어나지 않았다. 조각 표시까지 함께 반짝여야 어느 단계에서 짚어도 반응이 있다.
+    /// </summary>
+    public void FlashTargetResidue(int residueId)
+    {
+        if (!_targetMarkers.TryGetValue(residueId, out var markers)) return;
+
+        foreach (var marker in markers)
+            if (marker != null) marker.Flash();
     }
 
     /// <summary>
@@ -461,7 +518,45 @@ public class StructureLevelController : MonoBehaviour
 
         ApplyAminoAcidCentering(level);
 
+        // 대사를 고르는 쪽이 이 값을 읽으므로 이벤트를 쏘기 전에 갱신해야 한다.
+        ActiveRegionStructure = ComputeActiveRegionStructure();
+
         OnLevelChanged?.Invoke(level);
+    }
+
+    /// <summary>
+    /// 선택된 구간에서 가장 많은 이차구조를 그 구간의 성격으로 삼는다.
+    ///
+    /// 구간은 대개 한 종류로 딱 떨어지지 않는다 — P-loop 구간을 잡으면 앞뒤로 가닥과 나선이
+    /// 몇 잔기씩 물린다. 화면을 봤을 때 "대체로 무엇으로 보이는가"가 대사의 기준이므로
+    /// 다수결이 맞다. 같은 수면 나선 &gt; 가닥 &gt; 고리 순으로, 더 뚜렷한 모양을 이름으로 삼는다.
+    /// </summary>
+    private SecondaryStructureAssigner.Type ComputeActiveRegionStructure()
+    {
+        if (_chain == null || _secondaryStructure == null) return SecondaryStructureAssigner.Type.Loop;
+        if (_activeHelixIndex < 0 || _activeHelixIndex >= helixRegions.Count)
+            return SecondaryStructureAssigner.Type.Loop;
+
+        HelixRegion region = helixRegions[_activeHelixIndex];
+        int helix = 0, strand = 0, loop = 0;
+
+        int count = Mathf.Min(_chain.Count, _secondaryStructure.Length);
+        for (int i = 0; i < count; i++)
+        {
+            int resId = _chain.Residues[i].resId;
+            if (resId < region.startResId || resId > region.endResId) continue;
+
+            switch (_secondaryStructure[i])
+            {
+                case SecondaryStructureAssigner.Type.Helix: helix++; break;
+                case SecondaryStructureAssigner.Type.Strand: strand++; break;
+                default: loop++; break;
+            }
+        }
+
+        if (helix >= strand && helix >= loop && helix > 0) return SecondaryStructureAssigner.Type.Helix;
+        if (strand >= loop && strand > 0) return SecondaryStructureAssigner.Type.Strand;
+        return SecondaryStructureAssigner.Type.Loop;
     }
 
     // 아미노산 단계에서는 선택 구간만 남아 전체 구조의 한쪽 구석(예: 우하단)에 치우쳐 보인다.

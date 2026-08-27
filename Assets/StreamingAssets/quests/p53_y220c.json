@@ -9,6 +9,7 @@
   "compound_files": ["p53_fragment.json", "p53_stabilizer.json", "p53_mdm2.json", "p53_warhead.json", "p53_nonselective.json"],
   "entrance_offset": 0.8,
   "helix_regions": [
+    {"label": "Y220C 틈 (220번 변이 자리)", "start_res_id": 214, "end_res_id": 229},
     {"label": "DNA-contact Helix (H2)", "start_res_id": 278, "end_res_id": 289}
   ]
 }

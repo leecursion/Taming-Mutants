@@ -93,10 +93,25 @@ public class AIAssistantBrain : MonoBehaviour
     [Tooltip("리본 단계 — 단백질 전체 모양")]
     public string ribbonLine = "지금 보이는 게 단백질 전체 모양이에요. 리본처럼 생긴 줄기를 따라가다 " +
                                "궁금한 곳을 눌러보면 그 부분만 확대해서 볼 수 있어요.";
+    // 2단계에서 무엇을 말할지는 고른 구간이 실제로 어떤 모양이냐에 달렸다.
+    //
+    // 구간 목록(StructureLevelController.helixRegions)은 이름과 달리 "확대해 볼 범위"일 뿐이고,
+    // 실제 이차구조는 주쇄 수소결합으로 따로 판정된다. 실제로 KRAS 12번(P-loop)과 p53 220번은
+    // 나선이 아니라 고리로 판정되므로, 한 문장으로 통일해 두면 화면에는 고리가 떠 있는데
+    // 비서는 "돌돌 말린 나선"이라고 부르게 된다. 세 모양을 따로 적어 둔다.
     [TextArea(2, 4)]
-    [Tooltip("나선 단계 — 선택한 구간")]
+    [Tooltip("2단계 — 고른 구간이 알파나선일 때")]
     public string helixLine = "좋아요, 고르신 구간만 크게 띄웠어요. 이렇게 돌돌 말린 모양을 나선이라고 불러요. " +
                               "한 번 더 누르면 이 안의 원자까지 들어갈 수 있어요.";
+    [TextArea(2, 4)]
+    [Tooltip("2단계 — 고른 구간이 베타가닥일 때")]
+    public string strandLine = "좋아요, 고르신 구간만 크게 띄웠어요. 이렇게 납작한 화살표처럼 뻗은 모양을 가닥이라고 불러요. " +
+                               "여러 가닥이 나란히 붙어서 넓은 판을 이뤄요. 한 번 더 누르면 이 안의 원자까지 들어갈 수 있어요.";
+    [TextArea(2, 4)]
+    [Tooltip("2단계 — 고른 구간이 나선도 가닥도 아닌 고리(loop)일 때")]
+    public string loopLine = "좋아요, 고르신 구간만 크게 띄웠어요. 여기는 나선도 가닥도 아닌 느슨한 고리예요. " +
+                             "모양이 정해져 있지 않아서 잘 휘는 부분인데, 그래서 무언가를 붙잡는 자리가 되곤 해요. " +
+                             "한 번 더 누르면 이 안의 원자까지 들어갈 수 있어요.";
     [TextArea(2, 4)]
     [Tooltip("아미노산 단계 — 원자 하나하나")]
     public string aminoAcidLine = "여기가 가장 안쪽이에요. 이제 공 하나하나가 원자예요. " +
@@ -679,25 +694,55 @@ public class AIAssistantBrain : MonoBehaviour
         switch (level)
         {
             case StructureLevelController.ViewLevel.Ribbon: return ribbonLine;
-            case StructureLevelController.ViewLevel.Helix: return helixLine;
+            case StructureLevelController.ViewLevel.Helix: return ResolveRegionLine();
             case StructureLevelController.ViewLevel.AminoAcid: return aminoAcidLine;
             default: return null;
         }
     }
 
+    /// <summary>2단계 대사는 고른 구간이 실제로 어떤 모양인지에 맞춰 고른다.</summary>
+    private string ResolveRegionLine()
+    {
+        switch (ActiveRegionStructure)
+        {
+            case SecondaryStructureAssigner.Type.Strand: return strandLine;
+            case SecondaryStructureAssigner.Type.Loop: return loopLine;
+            default: return helixLine;
+        }
+    }
+
+    /// <summary>지금 확대해 보고 있는 구간의 모양. 레벨 컨트롤러가 없으면 나선으로 본다.</summary>
+    private SecondaryStructureAssigner.Type ActiveRegionStructure =>
+        levelController != null
+            ? levelController.ActiveRegionStructure
+            : SecondaryStructureAssigner.Type.Helix;
+
     /// <summary>모델에게 "지금 화면에 무엇이 떠 있는지"를 알려주는 한 줄.</summary>
-    private static string DescribeLevel(StructureLevelController.ViewLevel level)
+    private string DescribeLevel(StructureLevelController.ViewLevel level)
     {
         switch (level)
         {
             case StructureLevelController.ViewLevel.Ribbon:
                 return "화면에 단백질 전체가 리본(뼈대) 모양으로 떠 있다.";
             case StructureLevelController.ViewLevel.Helix:
-                return "사용자가 리본의 한 구간을 골라, 그 구간만 확대해 나선 모양으로 보고 있다.";
+                // 모델에게도 실제 모양을 알려준다. "나선 구간"이라고만 넘기면 화면에 고리가
+                // 떠 있어도 모델이 나선을 전제로 설명을 지어낸다.
+                return "사용자가 리본의 한 구간을 골라 그 구간만 확대해 보고 있다. " +
+                       $"이 구간의 이차구조는 {DescribeStructure(ActiveRegionStructure)}이다.";
             case StructureLevelController.ViewLevel.AminoAcid:
                 return "가장 안쪽 단계다. 선택한 구간의 원자 하나하나가 공으로 보인다.";
             default:
                 return null;
+        }
+    }
+
+    private static string DescribeStructure(SecondaryStructureAssigner.Type type)
+    {
+        switch (type)
+        {
+            case SecondaryStructureAssigner.Type.Helix: return "알파나선(돌돌 말린 모양)";
+            case SecondaryStructureAssigner.Type.Strand: return "베타가닥(납작한 화살표 모양)";
+            default: return "고리(loop, 정해진 모양이 없는 유연한 부분)";
         }
     }
 

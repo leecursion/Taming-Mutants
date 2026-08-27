@@ -9,6 +9,7 @@
   "compound_files": ["compound_A.json", "compound_B.json", "compound_C.json", "compound_D.json"],
   "entrance_offset": 0.8,
   "helix_regions": [
+    {"label": "P-loop (12번 변이 자리)", "start_res_id": 10, "end_res_id": 17},
     {"label": "Switch-II Helix (α2)", "start_res_id": 66, "end_res_id": 74},
     {"label": "α3 Helix", "start_res_id": 87, "end_res_id": 104}
   ]

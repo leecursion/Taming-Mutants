@@ -88,7 +88,11 @@ public class DockingQuestController : MonoBehaviour
         _questSpawned.Clear();
 
         targetResidueId = def.target_residue_id;
-        if (!string.IsNullOrEmpty(def.target_atom_name)) targetAtomName = def.target_atom_name;
+        // 빈 문자열은 "지정 안 함"이지 "이전 값을 유지하라"가 아니다. ABL1 T315I나 CFTR F508del처럼
+        // 공유결합이 아닌 사건은 표적 원자를 비워 두는데, 앞서 플레이한 사건이 남긴 "SG"가 그대로
+        // 있으면 엉뚱한 원자를 표적으로 집을 수 있다 — 퀘스트를 오가는 순서에 따라 결과가 달라지는
+        // 종류의 버그다. 비어 있을 때의 폴백은 IndexPocketAtoms가 맡는다(이름 → 원소 S → CA).
+        targetAtomName = def.target_atom_name;
         if (def.pocket_residue_ids != null && def.pocket_residue_ids.Count > 0)
             pocketResidueIds = new List<int>(def.pocket_residue_ids);
         if (def.entrance_offset > 0f) entranceOffset = def.entrance_offset;
