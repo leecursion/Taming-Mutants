@@ -1040,14 +1040,14 @@ MonoBehaviour:
   catalog: {fileID: 11400000, guid: 9f3ff2858d0ddbe43ad59bdd7db41b9d, type: 2}
   lookTarget: {fileID: 330585546}
   fitToViewport: 1
-  viewportWidthFraction: 0.68
-  viewportHeightFraction: 0.72
+  viewportWidthFraction: 0.56
+  viewportHeightFraction: 0.62
   metersPerCanvasUnit: 0.0022
   boardWidth: 900
-  cardHeight: 240
-  cardSpacing: 20
-  cardsPerPage: 3
-  pagerHeight: 64
+  cardMinHeight: 150
+  cardSpacing: 16
+  cardsPerPage: 2
+  pagerHeight: 52
   supersample: 2
   maxBakedFontPixels: 200
   fadeDuration: 0.35

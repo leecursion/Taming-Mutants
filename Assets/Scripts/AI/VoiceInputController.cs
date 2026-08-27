@@ -50,10 +50,15 @@ public class VoiceInputController : MonoBehaviour
     public bool blockWhileAssistantSpeaks = true;
     [Tooltip("녹음을 시작하면 비서의 말을 즉시 멈춘다. 끼어들어 질문할 수 있게 하려면 켜세요.")]
     public bool interruptAssistantOnRecord;
+    [Tooltip("비서가 말하는 동안에는 버튼을 통째로 감춘다. 말풍선이 버튼 자리를 덮어 " +
+             "가려진 버튼만 남기 때문이다. 끼어들기를 켜면 이 설정과 무관하게 계속 보인다.")]
+    public bool hideWhileAssistantSpeaks = true;
 
     /// <summary>지금 녹음 중인지.</summary>
     public bool IsRecording => speechToText != null && speechToText.IsListening;
 
+    private Canvas _canvas;
+    private GraphicRaycaster _raycaster;
     private Button _button;
     private Image _background;
     private Image _icon;
@@ -97,11 +102,12 @@ public class VoiceInputController : MonoBehaviour
         // 백엔드가 없거나 마이크가 없으면 버튼을 숨긴다. 매 프레임 보는 이유는
         // 마이크가 실행 중에 연결·해제될 수 있어서다.
         bool usable = speechToText != null && speechToText.IsConfigured;
-        if (_button != null && _button.gameObject.activeSelf != usable)
-            _button.gameObject.SetActive(usable);
+        SetUiVisible(usable && !HiddenByAssistantSpeech());
 
         if (!usable) return;
 
+        // 말풍선에 가려 안 보이는 동안에도 따라다니기와 상태 갱신은 계속한다.
+        // 여기서 멈추면 비서가 말을 마쳤을 때 버튼이 지난 자리에 한 프레임 나타났다가 따라온다.
         FollowAndFaceCamera();
         RefreshVisual();
     }
@@ -126,6 +132,42 @@ public class VoiceInputController : MonoBehaviour
         Transform parent = transform.parent;
         float parentScale = parent != null ? parent.lossyScale.x : 1f;
         if (parentScale > 1e-6f) transform.localScale = Vector3.one * (metersPerCanvasUnit / parentScale);
+    }
+
+    /// <summary>
+    /// 비서가 말하는 동안 버튼을 감출지.
+    ///
+    /// 말풍선은 비서를 기준으로 펼쳐지면서 버튼 자리(<see cref="localOffset"/>)를 덮는다.
+    /// 그대로 두면 말풍선 뒤에 가린 버튼만 남아 보이지도 눌리지도 않으므로, 아예 감춘다.
+    ///
+    /// 두 경우는 예외로 둔다.
+    /// 끼어들기(<see cref="interruptAssistantOnRecord"/>)를 켰다면 이 버튼이 비서의 말을 끊고
+    /// 질문하는 유일한 수단이라, 감추면 그 기능 자체가 사라진다.
+    /// 녹음 중이라면 지금 눌러야 녹음을 멈출 수 있으므로 역시 감추지 않는다.
+    /// </summary>
+    private bool HiddenByAssistantSpeech()
+    {
+        if (!hideWhileAssistantSpeaks || interruptAssistantOnRecord) return false;
+        if (IsRecording) return false;
+        if (assistant == null) return false;
+
+        // 멈춰 있는 동안(카메라가 레벨 사이를 건너는 중)에는 말풍선이 접혀 있어 가릴 것이 없다.
+        // AIAssistantBrain.PushInputLock이 "정말 말하는 중"을 가리는 방식과 같은 조건이다.
+        return assistant.IsBusy && !(assistant.bubble != null && assistant.bubble.IsPaused);
+    }
+
+    /// <summary>
+    /// 버튼과 안내 문구, 입력 막대를 한꺼번에 보이거나 감춘다.
+    ///
+    /// 루트 GameObject를 끄면 LateUpdate가 같이 멎어 다시 켤 방법이 없어지므로
+    /// 캔버스와 레이캐스터만 끈다. 그리기와 클릭 판정이 함께 멎는다.
+    /// 버튼 하나만 꺼서는 부족하다 — 안내 문구와 입력 막대는 버튼이 아니라
+    /// 캔버스에 직접 붙어 있어서 그대로 말풍선 위에 남는다.
+    /// </summary>
+    private void SetUiVisible(bool visible)
+    {
+        if (_canvas != null && _canvas.enabled != visible) _canvas.enabled = visible;
+        if (_raycaster != null && _raycaster.enabled != visible) _raycaster.enabled = visible;
     }
 
     // --- 상태 표시 ---
@@ -258,10 +300,11 @@ public class VoiceInputController : MonoBehaviour
 
     private void BuildUi()
     {
-        var canvas = GetComponent<Canvas>();
-        canvas.renderMode = RenderMode.WorldSpace;
+        _canvas = GetComponent<Canvas>();
+        _canvas.renderMode = RenderMode.WorldSpace;
 
-        if (GetComponent<GraphicRaycaster>() == null) gameObject.AddComponent<GraphicRaycaster>();
+        _raycaster = GetComponent<GraphicRaycaster>();
+        if (_raycaster == null) _raycaster = gameObject.AddComponent<GraphicRaycaster>();
 
         var canvasRect = (RectTransform)transform;
         canvasRect.sizeDelta = new Vector2(buttonSize * 3f, buttonSize * 2f);
