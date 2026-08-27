@@ -34,6 +34,20 @@ public class OpenAiWhisperClient : SpeechToTextBackend
     [Tooltip("위 칸이 비어 있으면 이 환경변수에서 키를 읽습니다.")]
     public string apiKeyEnvironmentVariable = "OPENAI_API_KEY";
 
+    [Header("배포용 프록시")]
+    [Tooltip("여기에 자체 백엔드 URL을 넣으면 위 엔드포인트와 키를 무시하고 이 주소로만 요청합니다.\n" +
+             "키가 서버에만 있으므로 빌드에서 키를 추출할 수 없습니다. 배포본에서는 반드시 채우세요.")]
+    public string proxyEndpoint = "";
+    [Tooltip("프록시가 요구하는 공유 토큰. 서버의 APP_TOKEN과 같은 값을 넣습니다.\n" +
+             "키를 대신하는 것이 아니라, URL이 알려졌을 때 아무나 호출하지 못하게 막는 최소한의 문턱입니다.")]
+    public string proxyToken = "";
+
+    /// <summary>프록시 URL이 채워져 있으면 그쪽으로만 보낸다. 이때 API 키는 필요하지 않다.</summary>
+    public bool UsingProxy => !string.IsNullOrWhiteSpace(proxyEndpoint);
+
+    /// <summary>실제로 요청을 보낼 주소. 프록시가 설정돼 있으면 그것이 우선한다.</summary>
+    public string RequestUrl => UsingProxy ? proxyEndpoint.Trim() : endpoint;
+
     [Header("녹음")]
     [Tooltip("비워두면 기본 마이크를 씁니다.")]
     public string microphoneDevice = "";
@@ -58,8 +72,8 @@ public class OpenAiWhisperClient : SpeechToTextBackend
     /// <summary>마이크가 하나도 없으면 키가 있어도 쓸 수 없다.</summary>
     public override bool IsConfigured =>
         !forceOfflineMode
-        && !string.IsNullOrWhiteSpace(endpoint)
-        && !string.IsNullOrWhiteSpace(ResolveApiKey())
+        && !string.IsNullOrWhiteSpace(RequestUrl)
+        && (UsingProxy || !string.IsNullOrWhiteSpace(ResolveApiKey()))
         && Microphone.devices != null && Microphone.devices.Length > 0;
 
     /// <summary>녹음이 시작된 시각. 길이를 재고 최대 시간을 넘겼는지 보는 데 쓴다.</summary>
@@ -85,7 +99,7 @@ public class OpenAiWhisperClient : SpeechToTextBackend
 
     private void Awake()
     {
-        if (!Application.isEditor && !string.IsNullOrWhiteSpace(apiKey))
+        if (!Application.isEditor && !UsingProxy && !string.IsNullOrWhiteSpace(apiKey))
         {
             Debug.LogWarning("[OpenAiWhisperClient] API 키가 빌드에 포함된 채 실행 중입니다. " +
                              "배포본에서는 자체 프록시로 교체하세요.", this);
@@ -293,9 +307,18 @@ public class OpenAiWhisperClient : SpeechToTextBackend
             // 그대로 쓰면 Content-Type 헤더를 우리가 덮어쓸 때 경계가 어긋나는 경우가 있다.
             byte[] boundary = UnityWebRequest.GenerateBoundary();
 
-            using (UnityWebRequest request = UnityWebRequest.Post(endpoint, form, boundary))
+            using (UnityWebRequest request = UnityWebRequest.Post(RequestUrl, form, boundary))
             {
-                request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
+                if (UsingProxy)
+                {
+                    // 프록시를 쓰면 키는 서버에만 있다. 여기서 보낼 것은 공유 토큰뿐이다.
+                    if (!string.IsNullOrWhiteSpace(proxyToken))
+                        request.SetRequestHeader("X-App-Token", proxyToken.Trim());
+                }
+                else
+                {
+                    request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
+                }
                 request.timeout = Mathf.Max(timeoutSeconds, 1);
 
                 if (logTraffic) Debug.Log($"[OpenAiWhisperClient] 업로드 {wav.Length / 1024}KB", this);

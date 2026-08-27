@@ -29,6 +29,9 @@ public class AICoScientistClient : AIChatBackend
     public string backendEndpoint = "https://your-backend.example.com/api/co-scientist";
     [Tooltip("응답을 기다리는 최대 시간(초). 넘기면 실패로 처리한다.")]
     public int timeoutSeconds = 30;
+    [Tooltip("백엔드가 요구하는 공유 토큰. 서버의 APP_TOKEN과 같은 값을 넣습니다.\n" +
+             "URL이 알려졌을 때 아무나 호출하지 못하게 막는 최소한의 문턱입니다.")]
+    public string proxyToken = "";
 
     [Header("디버그")]
     [Tooltip("켜면 백엔드가 설정돼 있어도 호출하지 않고 항상 실패시킨다. 오프라인 대사 확인용.")]
@@ -89,11 +92,13 @@ public class AICoScientistClient : AIChatBackend
         PendingRequests++;
         try
         {
-            using (var request = new UnityWebRequest(backendEndpoint, UnityWebRequest.kHttpVerbPOST))
+            using (var request = new UnityWebRequest(backendEndpoint.Trim(), UnityWebRequest.kHttpVerbPOST))
             {
                 request.uploadHandler = new UploadHandlerRaw(body);
                 request.downloadHandler = new DownloadHandlerBuffer();
                 request.SetRequestHeader("Content-Type", "application/json");
+                if (!string.IsNullOrWhiteSpace(proxyToken))
+                    request.SetRequestHeader("X-App-Token", proxyToken.Trim());
                 request.timeout = Mathf.Max(timeoutSeconds, 1);
 
                 yield return request.SendWebRequest();

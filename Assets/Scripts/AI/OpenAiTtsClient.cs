@@ -65,6 +65,20 @@ public class OpenAiTtsClient : TextToSpeechBackend
     [Tooltip("위 칸이 비어 있으면 이 환경변수에서 키를 읽습니다.")]
     public string apiKeyEnvironmentVariable = "OPENAI_API_KEY";
 
+    [Header("배포용 프록시")]
+    [Tooltip("여기에 자체 백엔드 URL을 넣으면 위 엔드포인트와 키를 무시하고 이 주소로만 요청합니다.\n" +
+             "키가 서버에만 있으므로 빌드에서 키를 추출할 수 없습니다. 배포본에서는 반드시 채우세요.")]
+    public string proxyEndpoint = "";
+    [Tooltip("프록시가 요구하는 공유 토큰. 서버의 APP_TOKEN과 같은 값을 넣습니다.\n" +
+             "키를 대신하는 것이 아니라, URL이 알려졌을 때 아무나 호출하지 못하게 막는 최소한의 문턱입니다.")]
+    public string proxyToken = "";
+
+    /// <summary>프록시 URL이 채워져 있으면 그쪽으로만 보낸다. 이때 API 키는 필요하지 않다.</summary>
+    public bool UsingProxy => !string.IsNullOrWhiteSpace(proxyEndpoint);
+
+    /// <summary>실제로 요청을 보낼 주소. 프록시가 설정돼 있으면 그것이 우선한다.</summary>
+    public string RequestUrl => UsingProxy ? proxyEndpoint.Trim() : endpoint;
+
     [Header("재생")]
     [Tooltip("비워두면 이 오브젝트에 AudioSource를 만들어 씁니다.")]
     public AudioSource audioSource;
@@ -86,8 +100,8 @@ public class OpenAiTtsClient : TextToSpeechBackend
 
     public override bool IsConfigured =>
         !forceOfflineMode
-        && !string.IsNullOrWhiteSpace(endpoint)
-        && !string.IsNullOrWhiteSpace(ResolveApiKey());
+        && !string.IsNullOrWhiteSpace(RequestUrl)
+        && (UsingProxy || !string.IsNullOrWhiteSpace(ResolveApiKey()));
 
     // 문장 → 이미 받아둔 소리. 순서를 알아야 오래된 것부터 버릴 수 있어 목록을 따로 둔다.
     private readonly System.Collections.Generic.Dictionary<string, AudioClip> _cache =
@@ -121,7 +135,7 @@ public class OpenAiTtsClient : TextToSpeechBackend
         // 비서 목소리는 방향감이 필요 없다. 3D로 두면 비서가 화면 가장자리로 갈 때 한쪽 귀에서만 들린다.
         audioSource.spatialBlend = 0f;
 
-        if (!Application.isEditor && !string.IsNullOrWhiteSpace(apiKey))
+        if (!Application.isEditor && !UsingProxy && !string.IsNullOrWhiteSpace(apiKey))
         {
             Debug.LogWarning("[OpenAiTtsClient] API 키가 빌드에 포함된 채 실행 중입니다. " +
                              "배포본에서는 자체 프록시로 교체하세요.", this);
@@ -256,12 +270,21 @@ public class OpenAiTtsClient : TextToSpeechBackend
         string body = BuildRequestJson(text);
         if (logTraffic) Debug.Log($"[OpenAiTtsClient] 요청\n{body}", this);
 
-        using (var request = new UnityWebRequest(endpoint, UnityWebRequest.kHttpVerbPOST))
+        using (var request = new UnityWebRequest(RequestUrl, UnityWebRequest.kHttpVerbPOST))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(body));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
-            request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
+            if (UsingProxy)
+            {
+                // 프록시를 쓰면 키는 서버에만 있다. 여기서 보낼 것은 공유 토큰뿐이다.
+                if (!string.IsNullOrWhiteSpace(proxyToken))
+                    request.SetRequestHeader("X-App-Token", proxyToken.Trim());
+            }
+            else
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + ResolveApiKey());
+            }
             request.timeout = Mathf.Max(timeoutSeconds, 1);
 
             yield return request.SendWebRequest();
