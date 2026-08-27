@@ -70,30 +70,30 @@ public static class QuestScenarioSetupMenu
             {
                 new ScenarioBeat
                 {
-                    line = "방금 병원에서 급한 연락이 왔어. 한 환자의 폐에서 세포 덩어리가 계속 커지고 있대.",
+                    line = "방금 병원에서 급한 연락이 왔어요. 한 환자의 폐에서 세포 덩어리가 계속 커지고 있대요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.LookAtUser,
                 },
                 new ScenarioBeat
                 {
-                    line = "이상한 건, 우리 몸이 분명 '이제 그만 자라'라고 신호를 보냈는데 그 세포들만 전혀 안 듣는다는 거야.",
+                    line = "이상한 건, 우리 몸이 분명 '이제 그만 자라'라고 신호를 보냈는데 그 세포들만 전혀 안 듣는다는 거예요.",
                     mood = AIAssistantState.Speaking,
                 },
                 new ScenarioBeat
                 {
-                    line = "그래서 세포를 여기로 가져왔어. 저기 떠 있는 게 그 세포 속에서 꺼낸 KRAS 단백질이야.",
+                    line = "그래서 세포를 여기로 가져왔어요. 저기 떠 있는 게 그 세포 속에서 꺼낸 KRAS 단백질이에요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.LookAtMolecule,
                 },
                 new ScenarioBeat
                 {
-                    line = "지금 반짝이는 저 자리 보여? 12번 자리야. 설계도에서 딱 한 글자가 바뀐 곳이지.",
+                    line = "지금 반짝이는 저 자리 보이시죠? 12번 자리예요. 설계도에서 딱 한 글자가 바뀐 곳이에요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
                 },
                 new ScenarioBeat
                 {
-                    line = "여기서부터가 우리 일이야. 글자 하나 때문에 왜 이런 일이 생겼는지 같이 밝혀보자!",
+                    line = "여기서부터가 우리 일이에요. 글자 하나 때문에 왜 이런 일이 생겼는지 같이 밝혀 봐요!",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.AskLlm,
                     llmPrompt = "플레이어에게 방금 사건 현장을 브리핑했어요. KRAS가 세포에서 어떤 스위치 역할을 하는지, " +
@@ -121,30 +121,30 @@ public static class QuestScenarioSetupMenu
             {
                 new ScenarioBeat
                 {
-                    line = "이번 환자는 담배를 한 번도 피운 적이 없대. 그런데도 폐에 종양이 생겼어.",
+                    line = "이번 환자는 담배를 한 번도 피운 적이 없대요. 그런데도 폐에 종양이 생겼어요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.LookAtUser,
                 },
                 new ScenarioBeat
                 {
-                    line = "세포 표면에는 바깥 소식을 받는 안테나가 달려 있어. EGFR이라고 불러.",
+                    line = "세포 표면에는 바깥 소식을 받는 안테나가 달려 있어요. EGFR이라고 불러요.",
                     mood = AIAssistantState.Speaking,
                 },
                 new ScenarioBeat
                 {
-                    line = "그런데 이 세포의 안테나는 밖에서 아무 신호가 안 왔는데도 계속 '신호 왔다!'고 소리치고 있어.",
+                    line = "그런데 이 세포의 안테나는 밖에서 아무 신호가 안 왔는데도 계속 '신호 왔다!'고 소리치고 있어요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.LookAtMolecule,
                 },
                 new ScenarioBeat
                 {
-                    line = "반짝이는 858번 자리를 봐. 여기 글자가 바뀌면서 안테나가 눌린 채로 굳어버렸어.",
+                    line = "반짝이는 858번 자리를 보세요. 여기 글자가 바뀌면서 안테나가 눌린 채로 굳어 버렸어요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
                 },
                 new ScenarioBeat
                 {
-                    line = "고장 난 안테나를 어떻게 조용히 시킬 수 있을까? 그게 이번 사건의 숙제야.",
+                    line = "고장 난 안테나를 어떻게 조용히 시킬 수 있을까요? 그게 이번 사건의 숙제예요.",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.AskLlm,
                     llmPrompt = "EGFR이 세포 표면에서 어떤 안테나 역할을 하는지, L858R 변이가 생기면 왜 " +
@@ -171,30 +171,30 @@ public static class QuestScenarioSetupMenu
             {
                 new ScenarioBeat
                 {
-                    line = "이번엔 좀 억울한 사건이야. 3년 동안 잘 듣던 약이 어느 날 갑자기 안 듣게 됐대.",
+                    line = "이번엔 좀 억울한 사건이에요. 3년 동안 잘 듣던 약이 어느 날 갑자기 안 듣게 됐대요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.LookAtUser,
                 },
                 new ScenarioBeat
                 {
-                    line = "그 약은 ABL1이라는 단백질의 열쇠 구멍에 쏙 들어가서 작동을 막아주는 약이었어.",
+                    line = "그 약은 ABL1이라는 단백질의 열쇠 구멍에 쏙 들어가서 작동을 막아 주는 약이었어요.",
                     mood = AIAssistantState.Speaking,
                 },
                 new ScenarioBeat
                 {
-                    line = "그런데 구멍 앞을 지키는 문지기 자리가 더 커다란 모양으로 바뀌어 버렸어. 315번 자리야.",
+                    line = "그런데 구멍 앞을 지키는 문지기 자리가 더 커다란 모양으로 바뀌어 버렸어요. 315번 자리예요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.FlashMutationSite,
                 },
                 new ScenarioBeat
                 {
-                    line = "문이 막힌 게 아니라 문 앞이 좁아진 거지. 열쇠는 멀쩡한데 이제 들어갈 수가 없어.",
+                    line = "문이 막힌 게 아니라 문 앞이 좁아진 거예요. 열쇠는 멀쩡한데 이제 들어갈 수가 없어요.",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.LookAtMolecule,
                 },
                 new ScenarioBeat
                 {
-                    line = "그럼 우리는 어떻게 해야 할까? 같이 방법을 찾아보자.",
+                    line = "그럼 우리는 어떻게 해야 할까요? 같이 방법을 찾아봐요.",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.AskLlm,
                     llmPrompt = "ABL1의 315번 자리가 왜 '문지기'라고 불리는지, 이 자리가 더 큰 모양으로 바뀌면 " +
@@ -222,30 +222,30 @@ public static class QuestScenarioSetupMenu
             {
                 new ScenarioBeat
                 {
-                    line = "이번 환자는 우리보다 어린 친구야. 끈끈한 가래 때문에 계속 기침을 한대.",
+                    line = "이번 환자는 우리보다 어린 친구예요. 끈끈한 가래 때문에 계속 기침을 한대요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.LookAtUser,
                 },
                 new ScenarioBeat
                 {
-                    line = "우리 세포 표면에는 물을 내보내는 문이 있어. 그 문 덕분에 가래가 묽게 유지되거든.",
+                    line = "우리 세포 표면에는 물을 내보내는 문이 있어요. 그 문 덕분에 가래가 묽게 유지되거든요.",
                     mood = AIAssistantState.Speaking,
                 },
                 new ScenarioBeat
                 {
-                    line = "그런데 이 친구의 세포에선 문이 만들어지긴 하는데, 표면까지 가지도 못하고 버려지고 있어.",
+                    line = "그런데 이 친구의 세포에선 문이 만들어지긴 하는데, 표면까지 가지도 못하고 버려지고 있어요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.LookAtMolecule,
                 },
                 new ScenarioBeat
                 {
-                    line = "설계도에서 508번 글자가 통째로 빠졌거든. 반짝이는 507번과 509번 사이, 저기가 빈자리야.",
+                    line = "설계도에서 508번 글자가 통째로 빠졌거든요. 반짝이는 507번과 509번 사이, 저기가 빈자리예요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
                 },
                 new ScenarioBeat
                 {
-                    line = "고장 난 문을 고쳐서 제자리로 보내주는 게 이번 사건의 목표야.",
+                    line = "고장 난 문을 고쳐서 제자리로 보내 주는 게 이번 사건의 목표예요.",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.AskLlm,
                     llmPrompt = "CFTR이 세포에서 어떤 문 역할을 하는지, 508번 글자가 사라지면 왜 그 문이 " +
@@ -273,30 +273,30 @@ public static class QuestScenarioSetupMenu
             {
                 new ScenarioBeat
                 {
-                    line = "마지막 사건이야. 이번 상대는 우리 몸을 지키던 경비원이 쓰러진 경우야.",
+                    line = "마지막 사건이에요. 이번 상대는 우리 몸을 지키던 경비원이 쓰러진 경우예요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.LookAtUser,
                 },
                 new ScenarioBeat
                 {
-                    line = "p53은 설계도가 망가지지 않았는지 검사하고, 문제가 있으면 세포를 멈춰 세우는 감시자야.",
+                    line = "p53은 설계도가 망가지지 않았는지 검사하고, 문제가 있으면 세포를 멈춰 세우는 감시자예요.",
                     mood = AIAssistantState.Speaking,
                 },
                 new ScenarioBeat
                 {
-                    line = "그런데 이 환자의 p53은 우리 체온 정도만 돼도 모양이 스르르 풀려버려.",
+                    line = "그런데 이 환자의 p53은 우리 체온 정도만 돼도 모양이 스르르 풀려 버려요.",
                     mood = AIAssistantState.Thinking,
                     action = ScenarioAction.LookAtMolecule,
                 },
                 new ScenarioBeat
                 {
-                    line = "반짝이는 220번 자리를 봐. 여기가 바뀌면서 옆구리에 틈이 생겼어. 그 틈 때문에 무너지는 거야.",
+                    line = "반짝이는 220번 자리를 보세요. 여기가 바뀌면서 옆구리에 틈이 생겼어요. 그 틈 때문에 무너지는 거예요.",
                     mood = AIAssistantState.Alert,
                     action = ScenarioAction.FlashMutationSite,
                 },
                 new ScenarioBeat
                 {
-                    line = "재미있는 건, 그 틈이 약점이자 기회라는 거야. 왜 그런지 같이 알아보자.",
+                    line = "재미있는 건, 그 틈이 약점이자 기회라는 거예요. 왜 그런지 같이 알아봐요.",
                     mood = AIAssistantState.Speaking,
                     action = ScenarioAction.AskLlm,
                     llmPrompt = "p53이 세포에서 어떤 감시자 역할을 하는지, Y220C 변이로 생긴 틈 때문에 왜 " +

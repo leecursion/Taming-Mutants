@@ -421,7 +421,7 @@ public class DockingQuestController : MonoBehaviour
         slot.SetResultColor(orderColor);
         selectionPanel.ShowResult(slot.Data, orderColor,
             messageOverride: slot.Data.order_error_message,
-            affinityOverride: "먼저 다른 후보물질이 필요해");
+            affinityOverride: "먼저 다른 후보물질이 필요해요");
         selectionPanel.Interactable = true;
         if (cftr != null) cftr.HandleOrderError(slot.Data.id);
 

@@ -88,8 +88,8 @@ public class QuestScenario
         if (parts.Length == 0) return null;
 
         parts.Append('.');
-        if (!string.IsNullOrWhiteSpace(place)) parts.Append($" 현장은 {place.Trim()}.");
-        if (!string.IsNullOrWhiteSpace(client)) parts.Append($" 의뢰인은 {client.Trim()}이야.");
+        if (!string.IsNullOrWhiteSpace(place)) parts.Append($" 현장은 {place.Trim()}입니다.");
+        if (!string.IsNullOrWhiteSpace(client)) parts.Append($" 의뢰인은 {client.Trim()}이세요.");
 
         return parts.ToString();
     }

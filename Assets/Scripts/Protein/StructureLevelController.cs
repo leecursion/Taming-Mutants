@@ -27,11 +27,7 @@ public class StructureLevelController : MonoBehaviour
     [Header("참조")]
     [Tooltip("비워두면 Camera.main 사용")]
     public Camera targetCamera;
-    [Tooltip("리본/Helix 세그먼트로 재사용할 프리팹. Bond.prefab(Cylinder+Collider)을 그대로 써도 된다.")]
-    public GameObject segmentPrefab;
-    [Tooltip("세그먼트를 홀로그램이 아닌 불투명(실제) 재질로 표시. Bond.prefab이 Hologram_Blue.mat을 쓰므로 기본 켜짐")]
-    public bool solidSegments = true;
-    [Tooltip("세그먼트에 덮어씌울 머티리얼. 비우면 URP Lit 기본 머티리얼 자동 생성")]
+    [Tooltip("리본/Helix 세그먼트에 쓸 머티리얼. 비우면 URP Lit 기본 머티리얼 자동 생성")]
     public Material segmentMaterial;
 
     [Header("Helix 구간 (미리 입력, 계산하지 않음)")]
@@ -40,14 +36,17 @@ public class StructureLevelController : MonoBehaviour
     [Header("표시 색상")]
     [Tooltip("리본 단계의 이차구조 색상. PyMOL/ChimeraX 기본 배색과 같다 — " +
              "알파나선 마젠타, 베타가닥 노랑, 루프/코일 흰색·회색. " +
-             "SecondaryStructureAssigner가 Cα 트레이스만으로 추정한 이차구조를 이 색으로 칠한다.")]
+             "SecondaryStructureAssigner가 주쇄 수소결합(DSSP)으로 판정한 이차구조를 이 색으로 칠한다.")]
     public Color ssHelixColor = new Color(0.78f, 0.2f, 0.85f);
     public Color ssStrandColor = new Color(1f, 0.92f, 0.15f);
     public Color ssLoopColor = new Color(0.82f, 0.82f, 0.85f);
     public Color helixColor = new Color(1f, 0.6f, 0.1f);
 
-    [Header("두께 (실제 반지름, unit 단위 — segmentPrefab의 기본 스케일과 무관)")]
+    [Header("리본 굵기 기준값 (unit)")]
+    [Tooltip("RibbonMeshBuilder.Style이 이 값 하나로 나선 띠 폭·가닥 판 폭·화살촉·루프 관 굵기를 " +
+             "실제 카툰 표현의 비율대로 정한다. 0.08이면 나선 폭 ≈ 2.2 Å로 PyMOL 기본과 같다.")]
     public float ribbonRadius = 0.08f;
+    [Tooltip("Helix 단계에서 쓰는 굵기 기준값. 한 구간만 크게 보는 단계라 리본보다 살짝 굵게 둔다.")]
     public float helixRadius = 0.1f;
 
     [Header("클릭 유도 효과")]
@@ -101,9 +100,26 @@ public class StructureLevelController : MonoBehaviour
     private bool _inputLocked;
     public event Action<ViewLevel> OnLevelChanged;
 
+    /// <summary>
+    /// 아미노산 단계에서 카메라가 실제로 향하는 월드 지점.
+    ///
+    /// <see cref="ApplyAminoAcidCentering"/>이 선택 구간의 무게중심을 이 지점(전체 구조의
+    /// 원래 중심 자리)으로 옮겨오므로, 아미노산 단계에서는 이 값이 곧 화면 중앙이다.
+    /// transform.position(앵커 원점)과는 다르다 — 원점은 구조의 피벗일 뿐 카메라가 보는
+    /// 자리가 아니고, 둘 사이 거리는 어떤 구간을 골랐느냐에 따라 사건마다 달라진다.
+    /// CompoundSelectionPanel처럼 "지금 화면에 보이는 구조 옆"에 뭔가를 붙이려면
+    /// transform.position이 아니라 이 프로퍼티를 기준으로 삼아야 한다.
+    /// </summary>
+    public Vector3 AminoAcidFocusWorldPosition => transform.TransformPoint(_fullCenterLocal);
+
     private ProteinLoader _proteinLoader;
     private Transform _ribbonRoot;
     private readonly List<Transform> _helixRegionRoots = new List<Transform>();
+    // 런타임 생성 메시는 GameObject를 지워도 함께 사라지지 않는다 — 구조를 전환할 때마다
+    // 수백 개씩 새로 만들므로 직접 해제하지 않으면 퀘스트를 오갈수록 메모리가 계속 늘어난다.
+    private readonly List<Mesh> _builtMeshes = new List<Mesh>();
+    private BackboneChain _chain;
+    private SecondaryStructureAssigner.Type[] _secondaryStructure;
     private int _activeHelixIndex = -1;
     // 구간 필터와 무관하게 아미노산 단계에서 항상 표시할 잔기 (도킹 타깃/포켓 등 — QuestCatalog가 주입)
     private readonly HashSet<int> _alwaysVisibleResidues = new HashSet<int>();
@@ -143,11 +159,16 @@ public class StructureLevelController : MonoBehaviour
     private void HandleLoaded(ProteinLoader.ProteinData data)
     {
         ClearBuilt(); // 구조 재로드(퀘스트 전환) 시 이전 리본/Helix 제거
-        BuildRibbon(data);
-        BuildHelixRegions(data);
+
+        // 주쇄(N/CA/C/O)를 한 번만 뽑아 이차구조 판정과 리본 지오메트리가 같은 데이터를 쓰게 한다.
+        _chain = BackboneChain.Extract(data, _proteinLoader.CenterOffset);
+        _secondaryStructure = SecondaryStructureAssigner.Assign(_chain);
+
+        BuildRibbon();
+        BuildHelixRegions();
 
         // 아미노산 단계 중앙 정렬에 쓸 전체 구조 중심(CA 평균) 캐시
-        _caTrace = ExtractCaTrace(data);
+        _caTrace = ExtractCaTrace();
         _fullCenterLocal = Vector3.zero;
         foreach (var entry in _caTrace) _fullCenterLocal += entry.Value;
         if (_caTrace.Count > 0) _fullCenterLocal /= _caTrace.Count;
@@ -167,8 +188,15 @@ public class StructureLevelController : MonoBehaviour
         foreach (var root in _helixRegionRoots)
             if (root != null) Destroy(root.gameObject);
         _helixRegionRoots.Clear();
+
+        foreach (var mesh in _builtMeshes)
+            if (mesh != null) Destroy(mesh);
+        _builtMeshes.Clear();
+
         _activeHelixIndex = -1;
     }
+
+    private void OnDestroy() => ClearBuilt();
 
     /// <summary>
     /// 퀘스트 정의 등 외부 데이터로 Helix 구간을 교체한다.
@@ -193,47 +221,42 @@ public class StructureLevelController : MonoBehaviour
 
     // --- 빌드 ---
 
-    private List<KeyValuePair<int, Vector3>> ExtractCaTrace(ProteinLoader.ProteinData data)
+    /// <summary>
+    /// 아미노산 단계 중앙 정렬에만 쓰는 Cα 목록. 리본 자체는 <see cref="_chain"/>에서 직접 만든다.
+    /// </summary>
+    private List<KeyValuePair<int, Vector3>> ExtractCaTrace()
     {
         var trace = new List<KeyValuePair<int, Vector3>>();
-        foreach (var atom in data.atoms)
-        {
-            if (atom.name != "CA") continue;
-            // ProteinLoader.SpawnStructure와 동일한 스케일 + 중심 보정 — 그래야 리본이
-            // ProteinLoader가 배치한 원자와 같은 자리(원점 근처)에 겹쳐진다.
-            Vector3 pos = new Vector3(atom.x, atom.y, atom.z) * 0.1f - _proteinLoader.CenterOffset;
-            trace.Add(new KeyValuePair<int, Vector3>(atom.res_id, pos));
-        }
-        trace.Sort((a, b) => a.Key.CompareTo(b.Key));
+        if (_chain == null) return trace;
+
+        foreach (var res in _chain.Residues)
+            trace.Add(new KeyValuePair<int, Vector3>(res.resId, res.ca));
+
         return trace;
     }
 
-    private void BuildRibbon(ProteinLoader.ProteinData data)
+    private void BuildRibbon()
     {
-        var trace = ExtractCaTrace(data);
-        var secondaryStructure = SecondaryStructureAssigner.Assign(trace);
-
         GameObject rootGo = new GameObject("RibbonView");
         rootGo.transform.SetParent(transform, false);
         _ribbonRoot = rootGo.transform;
 
-        for (int i = 0; i < trace.Count - 1; i++)
+        // 리본은 서열이 이어진 조각별로 따로 만들어진다 — 구조에 없는 잔기(cryo-EM에서 못 잡은 loop,
+        // F508del처럼 아예 결실된 자리, CFTR처럼 서열상 멀리 떨어진 두 구간만 골라 담은 경우)를
+        // 가로지르는 가짜 연결이 생기지 않도록 BackboneChain.Fragments가 경계를 잡아 준다.
+        var pieces = RibbonMeshBuilder.Build(_chain, _secondaryStructure,
+                                             RibbonMeshBuilder.Style.FromRadius(ribbonRadius));
+
+        for (int i = 0; i < pieces.Count; i++)
         {
-            // res_id가 실제로 연속(+1)일 때만 잇는다 — 구조에 없는 잔기(cryo-EM에서 못 잡은 loop,
-            // F508del처럼 아예 결실된 자리, CFTR처럼 서열상 멀리 떨어진 두 구간(NBD1/ICL4)만
-            // 골라 담은 경우)가 있으면 리본이 그 빈 구간을 가로질러 일직선으로 이어져 버린다.
-            if (trace[i + 1].Key != trace[i].Key + 1) continue;
+            RibbonMeshBuilder.Piece piece = pieces[i];
+            Color segColor = ColorForSecondaryStructure(piece.type);
 
-            Color segColor = ColorForSecondaryStructure(secondaryStructure[i]);
-
-            GameObject seg = CreateSegment(trace[i].Value, trace[i + 1].Value, _ribbonRoot, ribbonRadius);
-            TintSegment(seg, segColor);
-            var info = seg.AddComponent<RibbonSegmentInfo>();
-            info.residueIdA = trace[i].Key;
-            info.residueIdB = trace[i + 1].Key;
+            GameObject seg = CreatePiece(piece.mesh, _ribbonRoot, segColor, $"Ribbon_{piece.resId}");
+            seg.AddComponent<RibbonSegmentInfo>().residueId = piece.resId;
 
             // 클릭 시 Helix로 내려갈 수 있는 구간만 점멸 — 클릭해도 반응 없는 곳은 그대로 둔다
-            if (pulseClickableSegments && FindHelixRegionIndex(trace[i].Key) >= 0)
+            if (pulseClickableSegments && FindHelixRegionIndex(piece.resId) >= 0)
                 seg.AddComponent<ClickHintPulse>()
                    .Init(segColor, clickHintColor, clickHintPulseSpeed, i * clickHintPhaseStep);
         }
@@ -249,9 +272,9 @@ public class StructureLevelController : MonoBehaviour
         }
     }
 
-    private void BuildHelixRegions(ProteinLoader.ProteinData data)
+    private void BuildHelixRegions()
     {
-        var trace = ExtractCaTrace(data);
+        RibbonMeshBuilder.Style style = RibbonMeshBuilder.Style.FromRadius(helixRadius);
 
         for (int r = 0; r < helixRegions.Count; r++)
         {
@@ -260,23 +283,19 @@ public class StructureLevelController : MonoBehaviour
             GameObject regionGo = new GameObject($"HelixView_{region.label}");
             regionGo.transform.SetParent(transform, false);
 
-            var subset = new List<KeyValuePair<int, Vector3>>();
-            foreach (var entry in trace)
-            {
-                if (entry.Key >= region.startResId && entry.Key <= region.endResId)
-                    subset.Add(entry);
-            }
+            var ids = new HashSet<int>();
+            for (int id = region.startResId; id <= region.endResId; id++) ids.Add(id);
 
-            for (int i = 0; i < subset.Count - 1; i++)
-            {
-                // 리본과 같은 이유 — 예: CFTR "NBD1 F508 인접 루프"(495-520)는 507→509 사이의
-                // F508 결실 자리를 품고 있어, 연속성 체크 없이 이으면 그 빈자리를 가로지르는 직선이 생긴다.
-                if (subset[i + 1].Key != subset[i].Key + 1) continue;
+            // 스플라인은 사슬 전체로 계산하고 메시만 구간 안쪽에서 뽑는다 — 구간 좌표만 떼어
+            // 따로 스플라인을 그리면 경계에서 접선이 달라져, 리본 단계에서 보던 모양과
+            // 미묘하게 다른 곡선이 나온다.
+            var pieces = RibbonMeshBuilder.Build(_chain, _secondaryStructure, style, ids);
 
-                GameObject seg = CreateSegment(subset[i].Value, subset[i + 1].Value, regionGo.transform, helixRadius);
-                TintSegment(seg, helixColor);
-                var info = seg.AddComponent<HelixSegmentInfo>();
-                info.helixRegionIndex = r;
+            for (int i = 0; i < pieces.Count; i++)
+            {
+                GameObject seg = CreatePiece(pieces[i].mesh, regionGo.transform, helixColor,
+                                             $"Helix_{pieces[i].resId}");
+                seg.AddComponent<HelixSegmentInfo>().helixRegionIndex = r;
 
                 // Helix 단계에서는 어느 세그먼트를 눌러도 아미노산으로 내려가므로 전체가 점멸 대상
                 if (pulseClickableSegments)
@@ -289,21 +308,26 @@ public class StructureLevelController : MonoBehaviour
         }
     }
 
-    private GameObject CreateSegment(Vector3 a, Vector3 b, Transform parent, float radius)
+    /// <summary>
+    /// 리본 조각 하나를 씬에 올린다. 메시 정점이 이미 앵커 로컬 좌표라 트랜스폼은 기본값 그대로 둔다
+    /// (부모가 회전/이동한 상태에서 빌드돼도 원자 표시와 어긋나지 않는다).
+    /// </summary>
+    private GameObject CreatePiece(Mesh mesh, Transform parent, Color color, string name)
     {
-        GameObject seg = Instantiate(segmentPrefab, parent);
-        if (solidSegments)
-        {
-            var renderer = seg.GetComponent<Renderer>();
-            if (renderer != null)
-                renderer.sharedMaterial = segmentMaterial != null ? segmentMaterial : RuntimeMaterials.Solid;
-        }
-        Vector3 mid = (a + b) / 2f;
-        seg.transform.localPosition = mid;
-        // a/b는 로컬 좌표이므로 로컬 회전으로 정렬 (부모가 회전한 상태에서 빌드돼도 안전)
-        seg.transform.localRotation = Quaternion.FromToRotation(Vector3.up, (b - a).normalized);
-        float length = Vector3.Distance(a, b);
-        seg.transform.localScale = new Vector3(radius, length / 2f, radius);
+        _builtMeshes.Add(mesh);
+
+        var seg = new GameObject(name);
+        seg.transform.SetParent(parent, false);
+
+        seg.AddComponent<MeshFilter>().sharedMesh = mesh;
+        var renderer = seg.AddComponent<MeshRenderer>();
+        renderer.sharedMaterial = segmentMaterial != null ? segmentMaterial : RuntimeMaterials.Solid;
+
+        // 클릭으로 단계를 내려가는 조작이 레이캐스트라 조각마다 콜라이더가 필요하다.
+        // 클릭 대상이 아닌 루프에도 달아야 앞에 있는 루프를 눌렀을 때 뒤쪽 나선이 대신 잡히지 않는다.
+        seg.AddComponent<MeshCollider>().sharedMesh = mesh;
+
+        TintSegment(seg, color);
         return seg;
     }
 
@@ -335,7 +359,7 @@ public class StructureLevelController : MonoBehaviour
             var ribbonInfo = hit.collider.GetComponent<RibbonSegmentInfo>();
             if (ribbonInfo == null) return;
 
-            int regionIndex = FindHelixRegionIndex(ribbonInfo.residueIdA);
+            int regionIndex = FindHelixRegionIndex(ribbonInfo.residueId);
             if (regionIndex < 0) return; // 이 구간엔 미리 지정된 Helix가 없음
 
             _activeHelixIndex = regionIndex;
@@ -442,11 +466,10 @@ public class StructureLevelController : MonoBehaviour
 
 }
 
-/// <summary>리본 세그먼트 클릭 판별용 — 어느 잔기 구간인지 표시.</summary>
+/// <summary>리본 조각 클릭 판별용 — 어느 잔기의 조각인지 표시.</summary>
 public class RibbonSegmentInfo : MonoBehaviour
 {
-    public int residueIdA;
-    public int residueIdB;
+    public int residueId;
 }
 
 /// <summary>Helix 세그먼트 클릭 판별용 — 어느 HelixRegion에 속하는지 표시.</summary>

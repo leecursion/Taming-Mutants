@@ -202,7 +202,7 @@ public class IntroDirector : MonoBehaviour
         if (assistant != null)
         {
             assistant.ResetConversation();
-            assistant.SpeakNow("다른 사건을 골라볼까?");
+            assistant.SpeakNow("다른 사건을 골라볼까요?");
         }
 
         yield return SelectAndStartQuestRoutine();

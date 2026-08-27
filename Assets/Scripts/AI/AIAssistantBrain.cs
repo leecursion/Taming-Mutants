@@ -43,9 +43,9 @@ public class AIAssistantBrain : MonoBehaviour
     [TextArea(2, 4)]
     public string[] greetingLines =
     {
-        "안녕! 오늘부터 이 과학실에서 함께 일할 AI 도우미야.",
-        "그런데 방금 센서에 이상한 신호가 잡혔어. 우리 몸 세포 안에서 뭔가 평소와 다르게 움직이고 있대.",
-        "어떤 사건부터 조사해 볼까?",
+        "안녕하세요. 오늘부터 이 과학실에서 함께 일할 AI 도우미예요.",
+        "그런데 방금 센서에 이상한 신호가 잡혔어요. 우리 몸 세포 안에서 뭔가 평소와 다르게 움직이고 있대요.",
+        "어떤 사건부터 조사해 볼까요?",
     };
 
     [Header("자동 브리핑")]
@@ -91,16 +91,16 @@ public class AIAssistantBrain : MonoBehaviour
     public bool elaborateStructureLevelsWithLlm = true;
     [TextArea(2, 4)]
     [Tooltip("리본 단계 — 단백질 전체 모양")]
-    public string ribbonLine = "지금 보이는 게 단백질 전체 모양이야. 리본처럼 생긴 줄기를 따라가다 " +
-                               "궁금한 곳을 눌러보면 그 부분만 확대해서 볼 수 있어.";
+    public string ribbonLine = "지금 보이는 게 단백질 전체 모양이에요. 리본처럼 생긴 줄기를 따라가다 " +
+                               "궁금한 곳을 눌러보면 그 부분만 확대해서 볼 수 있어요.";
     [TextArea(2, 4)]
     [Tooltip("나선 단계 — 선택한 구간")]
-    public string helixLine = "좋아, 네가 고른 구간만 크게 띄웠어. 이렇게 돌돌 말린 모양을 나선이라고 불러. " +
-                              "한 번 더 누르면 이 안의 원자까지 들어갈 수 있어.";
+    public string helixLine = "좋아요, 고르신 구간만 크게 띄웠어요. 이렇게 돌돌 말린 모양을 나선이라고 불러요. " +
+                              "한 번 더 누르면 이 안의 원자까지 들어갈 수 있어요.";
     [TextArea(2, 4)]
     [Tooltip("아미노산 단계 — 원자 하나하나")]
-    public string aminoAcidLine = "여기가 가장 안쪽이야. 이제 공 하나하나가 원자야. " +
-                                  "색깔이 다른 건 서로 다른 원소라는 뜻이지.";
+    public string aminoAcidLine = "여기가 가장 안쪽이에요. 이제 공 하나하나가 원자예요. " +
+                                  "색깔이 다른 건 서로 다른 원소라는 뜻이에요.";
 
     [Header("말하는 동안 입력 잠금")]
     [Tooltip("설명이 끝나기 전에 구조나 후보물질을 클릭해 넘어가지 못하게 막는다.")]
@@ -111,9 +111,9 @@ public class AIAssistantBrain : MonoBehaviour
 
     [Header("실패 시 문구")]
     [TextArea(2, 4)]
-    public string offlineNotice = "지금은 외부 지식 연결이 잠깐 꺼져 있어. 내가 아는 만큼 최대한 쉽게 설명해줄게!";
+    public string offlineNotice = "지금은 외부 지식 연결이 잠깐 꺼져 있어요. 제가 아는 만큼 최대한 쉽게 설명해 드릴게요!";
     [TextArea(2, 4)]
-    public string requestFailedNotice = "어? 연결이 잠깐 끊겼나 봐. 조금 있다가 다시 물어봐 줄래?";
+    public string requestFailedNotice = "어? 연결이 잠깐 끊겼나 봐요. 조금 있다가 다시 물어봐 주시겠어요?";
 
     /// <summary>백엔드에 실제로 물어볼 수 있는 상태인지.</summary>
     public bool CanUseLlm => client != null && client.IsConfigured;
@@ -333,7 +333,7 @@ public class AIAssistantBrain : MonoBehaviour
 
         if (!CanUseLlm)
         {
-            Speak("여기까지가 내가 줄 수 있는 힌트야! 구조를 손으로 돌려가며 다른 각도에서 한번 살펴봐.");
+            Speak("여기까지가 제가 드릴 수 있는 힌트예요! 구조를 손으로 돌려가며 다른 각도에서 한번 살펴보세요.");
             return;
         }
 
@@ -361,7 +361,7 @@ public class AIAssistantBrain : MonoBehaviour
         SpeakNow(spoken);
         SetState(AIAssistantState.Thinking);
         int generation = _conversationGeneration;
-        client.Ask($"{label}에 대해 중학생도 이해할 수 있게 쉬운 말로 두세 문장으로 설명해줘.", BuildContext(label),
+        client.Ask($"{label}에 대해 중학생도 이해할 수 있게 쉬운 말로, 존댓말로 두세 문장으로 설명해 주세요.", BuildContext(label),
             onReply: reply => { if (generation == _conversationGeneration) Speak(reply); },
             onFailed: _ => { /* 이미 이름은 말했으니 실패는 조용히 넘긴다 */ });
     }
@@ -427,11 +427,11 @@ public class AIAssistantBrain : MonoBehaviour
         string name = string.IsNullOrWhiteSpace(result.Compound.display_name)
             ? "이 물질" : result.Compound.display_name;
 
-        if (result.IsOrderError) return $"{name}은 방향은 맞는데, 아직 순서가 일러.";
+        if (result.IsOrderError) return $"{name}은 방향은 맞는데, 아직 순서가 일러요.";
 
         return result.IsSuccess
-            ? $"{name}, 딱 맞았어! 포켓에 제대로 붙었어."
-            : $"{name}은 이번엔 잘 안 붙었네. 다시 해보자.";
+            ? $"{name}, 딱 맞았어요! 포켓에 제대로 붙었어요."
+            : $"{name}은 이번엔 잘 안 붙었네요. 다시 해 볼까요?";
     }
 
     /// <summary>질문 틀의 자리표시자를 채운다.</summary>
@@ -529,7 +529,7 @@ public class AIAssistantBrain : MonoBehaviour
 
         // 시나리오가 없는 퀘스트도 있어야 한다. 데이터가 덜 채워졌다고 도입부가 통째로 비면
         // 플레이어는 아무 설명 없이 분자 앞에 놓인다.
-        Speak($"좋아, '{quest.title}' 사건 조사를 시작하자!");
+        Speak($"좋아요, '{quest.title}' 사건 조사를 시작할게요!");
         if (!string.IsNullOrWhiteSpace(quest.summary)) Speak(quest.summary);
     }
 
@@ -571,11 +571,28 @@ public class AIAssistantBrain : MonoBehaviour
     /// IntroDirector.WaitForAssistantIdle과 같은 이유로 <see cref="IsBusyOrWaiting"/>을 본다 —
     /// <see cref="IsBusy"/>만 보면 LLM 응답을 기다리는 몇 초 동안 말풍선 큐가 비어 "끝났다"고
     /// 오판해, 보충 설명이 도착하기도 전에 화면이 넘어가 버린다.
+    ///
+    /// 한 프레임만 idle이어도 넘기지 않는다. LLM 응답 수신(PendingRequests가 0으로)과 그 응답을
+    /// 말풍선 큐에 넣는 것(Speak)은 서로 다른 컴포넌트가 각자 처리하는 두 단계라, "요청은 막
+    /// 끝났는데 다음 대사가 아직 큐에 안 들어간" 아주 짧은 idle 틈이 한두 프레임 생긴다. 그
+    /// 틈에 CompleteCurrentStage()를 부르면 카메라 전환이 시작되고 QuestLevelBinder가
+    /// bubble.Pause()로 화면을 지워, 방금 큐에 들어간 보충 설명이 말 중간에 끊긴다.
+    /// 여러 프레임 연속 idle이어야 진짜로 다 끝난 것으로 본다 — WaitForAssistantIdle과 같은 규칙.
+    /// 응답이 영영 오지 않아도 진행은 막히면 안 되므로 상한도 둔다.
     /// </summary>
     private IEnumerator AdvanceToProteinStageAfterExplaining(int generation)
     {
         yield return null;
-        while (IsBusyOrWaiting) yield return null;
+
+        const int settleFrames = 6;
+        float deadline = Time.time + 40f;
+        int idleStreak = 0;
+        while (Time.time < deadline)
+        {
+            idleStreak = IsBusyOrWaiting ? 0 : idleStreak + 1;
+            if (idleStreak >= settleFrames) break;
+            yield return null;
+        }
 
         // 그 사이 사용자가 '이전'으로 나갔거나 다른 사건을 새로 골랐을 수 있다(대화 세대가
         // 바뀐다) — 그때는 지금 걸려 있는 게 이 코루틴이 기다리던 그 단계가 아니므로 넘기지 않는다.
@@ -588,8 +605,8 @@ public class AIAssistantBrain : MonoBehaviour
     {
         SetState(AIAssistantState.Speaking);
         Speak(quest != null
-            ? $"'{quest.title}' 사건 해결 완료! 정말 잘했어."
-            : "사건 해결 완료! 정말 잘했어.");
+            ? $"'{quest.title}' 사건 해결 완료! 정말 잘하셨어요."
+            : "사건 해결 완료! 정말 잘하셨어요.");
     }
 
     private void HandleClientError(string reason)
@@ -781,7 +798,7 @@ public class AIAssistantBrain : MonoBehaviour
         // "들어가보자"는 아직 말하지 않는다. 사건 설명을 다 마친 뒤 SpeakEnterTrigger로
         // 마지막에 붙여야, 그 말이 큐에서 다 재생된 뒤에야(IsBusyOrWaiting) IntroDirector가
         // 줌인을 시작한다 — 설명 없이 곧장 빨려 들어가는 것을 막는 지점이 여기다.
-        SpeakNow($"'{quest.title}' 사건이구나.");
+        SpeakNow($"'{quest.title}' 사건이군요.");
 
         if (!introduceTargetWithLlm)
         {
@@ -821,7 +838,7 @@ public class AIAssistantBrain : MonoBehaviour
     /// IntroDirector.WaitForAssistantIdle은 이 말까지 다 끝나야 줌인(session.StartQuest)을 시작한다.</summary>
     private void SpeakEnterTrigger(QuestDefinition quest)
     {
-        Speak($"자, 이제 {quest.gene} 단백질 안으로 직접 들어가보자!");
+        Speak($"자, 이제 {quest.gene} 단백질 안으로 직접 들어가 볼까요!");
     }
 
     /// <summary>질문 틀의 자리표시자를 고른 퀘스트 값으로 채운다.</summary>

@@ -284,7 +284,7 @@ public class VoiceInputController : MonoBehaviour
         }
 
         // 알아들은 말을 먼저 되읊어 준다. 잘못 들었을 때 사용자가 바로 알아채고 다시 물을 수 있다.
-        assistant.SpeakNow($"\"{text}\" 라고 물어봤구나. 잠깐만!");
+        assistant.SpeakNow($"\"{text}\" 라고 물어보셨네요. 잠깐만요!");
         assistant.AskAssistant(text);
     }
 
@@ -293,7 +293,7 @@ public class VoiceInputController : MonoBehaviour
         Debug.LogWarning($"[VoiceInputController] 음성 인식 실패: {reason}", this);
 
         if (assistant != null)
-            assistant.SpeakNow("어? 잘 못 들었어. 조금 더 또렷하게 다시 말해줄래?");
+            assistant.SpeakNow("어? 잘 못 들었어요. 조금 더 또렷하게 다시 말씀해 주시겠어요?");
     }
 
     // --- UI 만들기 ---
