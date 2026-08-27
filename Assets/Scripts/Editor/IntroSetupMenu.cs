@@ -95,6 +95,7 @@ public static class IntroSetupMenu
         quest.structureStreamingPath = "structures/P01116.json";
         quest.mutationResidueIds = new[] { 12 };
         quest.targetPocketLabel = "스위치를 끄는 열쇠 구멍 (Switch-II Pocket)";
+        quest.mutationSiteAlias = "고장 난 스위치";
 
         quest.stages = new[]
         {
@@ -111,7 +112,7 @@ public static class IntroSetupMenu
                 },
                 hints = new[]
                 {
-                    "반짝이는 자리가 12번 자리예요. 나선을 따라 천천히 위로 살펴보세요.",
+                    "혼자 떨고 있는 자리가 12번 자리예요. 나선을 따라 천천히 위로 살펴보세요.",
                     "바뀐 글자는 딱 하나뿐이에요 — 아주 작은 차이가 큰 문제를 만들었어요.",
                 },
                 llmContext = "KRAS는 '이제 자라도 돼!'라는 신호를 보냈다가 다시 꺼지는 스위치 역할 단백질이다. " +
@@ -123,17 +124,17 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 단백질 탐정",
-                objective = "정상 단백질과 이상해진 단백질의 모양을 비교하고, AI가 어디를 자신 있게 예측했는지 색깔로 확인해 봐요.",
+                objective = "접힌 단백질의 전체 모양을 살펴보고, 12번 자리가 어디쯤인지 찾아봐요.",
                 assistantLines = new[]
                 {
                     "바뀐 설계도대로 단백질이 새로 만들어져요. 사슬이 접히면서 입체 모양이 되는 걸 지켜봐요.",
-                    "다 접히면 색깔 지도가 켜질 거예요. 이 색은 AI가 이 부분 모양을 얼마나 자신 있게 예측했는지 보여줘요.",
+                    "다 접히면 색이 칠해져요. 이 색은 줄기가 어떤 모양으로 접혔는지 알려줘요 — 자주색은 나선, 노란색은 납작한 가닥이에요.",
                     "특히 이 근처가 많이 흔들리네요. 여기가 우리가 눈여겨봐야 할 자리예요.",
                 },
                 hints = new[]
                 {
-                    "정상 단백질과 이상 단백질을 나란히 두고 12번 자리만 비교해 보세요.",
-                    "색이 노랗거나 빨간 곳은 AI도 확신이 없다는 뜻이니 조심해서 살펴봐요.",
+                    "혼자 지직거리는 자리가 12번이에요. 번호표를 따라가 보세요.",
+                    "안쪽 원자까지 들어가면 색의 뜻이 바뀌어요 — 거기서는 AI가 얼마나 확신하는지를 보여줘요.",
                 },
                 llmContext = "AlphaFold라는 AI가 단백질의 3D 모양을 예측했고, 색은 pLDDT라는 예측 신뢰도 점수를 " +
                              "보여준다(파랑=자신 있음, 빨강·주황=자신 없음). Switch-I, Switch-II라 부르는 부분은 " +
@@ -264,6 +265,7 @@ public static class IntroSetupMenu
         quest.structureStreamingPath = "structures/P00533.json";
         quest.mutationResidueIds = new[] { 858, 790 };
         quest.targetPocketLabel = "신호 물질이 들어가는 자리 (ATP 결합 포켓)";
+        quest.mutationSiteAlias = "굳어버린 스위치";
 
         quest.stages = new[]
         {
@@ -278,7 +280,7 @@ public static class IntroSetupMenu
                     "858번 자리를 살펴봐요. 여기 모양이 조금 달라졌어요.",
                     "작은 부분 하나가 바뀌면서 안테나가 신호도 없이 계속 켜진 채로 고정돼 버렸어요.",
                 },
-                hints = new[] { "858번 자리를 클릭해 보세요. 빨갛게 반짝이고 있어요." },
+                hints = new[] { "858번 자리를 클릭해 보세요. 빨갛게 지직거리고 있어요." },
                 llmContext = "EGFR은 세포 표면의 신호 수신 안테나 역할을 하는 단백질이다. 정상일 때는 신호 " +
                              "물질(리간드)이 와야 켜지지만, 활성 부위 858번 자리가 바뀌면 신호 없이도 계속 켜진 " +
                              "상태로 고정된다. 그러면 세포가 멈추지 않고 계속 자라라는 신호를 받는다.",
@@ -287,10 +289,10 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 단백질 탐정",
-                objective = "색깔 지도를 보고 AI가 확신하지 못한 부분을 찾아봐요.",
+                objective = "접힌 단백질의 전체 모양을 살펴보고, 858번 자리가 어디쯤인지 찾아봐요.",
                 assistantLines = new[]
                 {
-                    "색이 파란색일수록 AI가 이 모양을 자신 있게 예측한 거예요. 노란빛 부분은 조심해서 봐요.",
+                    "여기 색은 줄기가 접힌 모양을 뜻해요 — 자주색은 나선, 노란색은 납작한 가닥이에요. 안쪽 원자까지 들어가면 그때는 AI의 확신 정도를 색으로 보여줘요.",
                 },
                 hints = new[] { "리본 모양에서 원자 단위까지 들어가면 하나하나 자세히 볼 수 있어요." },
                 llmContext = "색은 AI 예측 신뢰도(pLDDT) 점수를 나타낸다. 90 이상은 매우 확실함, 70~90은 " +
@@ -360,6 +362,7 @@ public static class IntroSetupMenu
         quest.structureStreamingPath = "structures/P00519.json";
         quest.mutationResidueIds = new[] { 315 };
         quest.targetPocketLabel = "문지기가 바뀐 ATP 결합 포켓 (Gatekeeper T315I)";
+        quest.mutationSiteAlias = "문지기 자리";
 
         quest.stages = new[]
         {
@@ -391,7 +394,7 @@ public static class IntroSetupMenu
                     "315번 자리를 다시 봐 주세요. 작았던 Thr(트레오닌)가 훨씬 커다란 Ile(아이소류신)로 바뀌었어요.",
                     "저 빨갛게 빛나는 곳이 바로 그 자리예요. 곁사슬이 커지면서 예전 열쇠가 들어가던 틈을 막아 버렸어요.",
                 },
-                hints = new[] { "315번 자리를 클릭해 보세요. 빨갛게 반짝이며 커진 게 보일 거예요." },
+                hints = new[] { "315번 자리를 클릭해 보세요. 빨갛게 지직거리며 커진 게 보일 거예요." },
                 llmContext = "T315I는 ABL1의 문지기 잔기 Thr315이 Ile(아이소류신)로 바뀌는 돌연변이다. " +
                              "아이소류신은 곁사슬이 더 크고 소수성이라, 기존 ATP 경쟁 억제제(예: Imatinib)가 " +
                              "자리 잡던 공간을 물리적으로 막아버린다(steric hindrance). 이 때문에 한 번 들었던 " +
@@ -536,6 +539,7 @@ public static class IntroSetupMenu
         quest.structureStreamingPath = "structures/8EJ1.json";
         quest.mutationResidueIds = new[] { 507, 509 }; // 508 자체는 결실이라 구조에 없음 — 양옆 잔기로 표시
         quest.targetPocketLabel = "F508 결실 주변, NBD1 접힘 자리";
+        quest.mutationSiteAlias = "빠진 글자 자리";
 
         quest.stages = new[]
         {
@@ -566,7 +570,7 @@ public static class IntroSetupMenu
                     "이 구조를 보세요 — 508번 자리가 있어야 할 곳이 비어 있어서 그 주변(507, 509번)이 계속 흔들리고 있어요.",
                     "이렇게 불안정한 모양으로는 세포가 '불량품'이라고 판단해서 밖으로 내보내지 않고 분해해 버려요.",
                 },
-                hints = new[] { "507번과 509번 자리를 클릭해 보세요. 빨갛게 반짝이며 흔들리고 있어요." },
+                hints = new[] { "507번과 509번 자리를 클릭해 보세요. 빨갛게 지직거리며 흔들리고 있어요." },
                 llmContext = "F508del CFTR은 NBD1 도메인의 folding이 불안정해지고, NBD1과 막관통 도메인(TMD) " +
                              "사이의 조립도 약해진다. 세포는 품질관리 시스템(ERAD)을 통해 이 불안정한 단백질을 " +
                              "인식해 분해해 버리므로, 애초에 세포막에 도달하는 양 자체가 크게 줄어든다.",
@@ -711,6 +715,7 @@ public static class IntroSetupMenu
         quest.structureStreamingPath = "structures/P53_Y220C_9S9O.json";
         quest.mutationResidueIds = new[] { 220 };
         quest.targetPocketLabel = "220번 자리 옆에 새로 생긴 틈 (Y220C pocket)";
+        quest.mutationSiteAlias = "무너진 틈";
 
         quest.stages = new[]
         {
@@ -739,17 +744,18 @@ public static class IntroSetupMenu
             {
                 stage = Stage.Quest2_ProteinStructure,
                 title = "2화 · 온도를 올려보기",
-                objective = "20~60°C 온도 슬라이더를 움직여, 온도가 오를수록 방패가 얼마나 흔들리는지 관찰해요.",
+                objective = "구조 안쪽 원자까지 들어가서, 온도를 올리면 이 방패가 얼마나 흔들리는지 관찰해요.",
                 assistantLines = new[]
                 {
-                    "슬라이더로 온도를 올려 볼게요. 흔들림(wobble)이 점점 커지는 게 보이시죠?",
-                    "체온인 37°C에서도 이미 꽤 불안정해요. 이게 이 사건의 핵심이에요 — 완전히 풀리진 않지만, 원래보다 훨씬 약해요.",
-                    "온도를 더 올리면 주변에 흐릿한 입자도 늘어나요. 단백질끼리 엉겨 붙을 위험 신호예요.",
+                    "이 방패를 직접 데워 볼 거예요. 온도 조절기는 지금 보이는 리본이나 그다음 나선 단계에는 없어요.",
+                    "구조를 눌러 원자 단계까지 들어가야 화면 아래에 조절기가 나와요. 거기서부터 온도를 올려 볼 수 있어요.",
+                    "미리 말해 두면, 체온인 37도에서도 이미 꽤 불안정해요. 완전히 풀리진 않지만 원래보다 훨씬 약하다는 게 이 사건의 핵심이에요.",
+                    "얼마나 약한지는 직접 온도를 올려 보면 바로 보일 거예요. 들어가 볼까요?",
                 },
                 hints = new[]
                 {
-                    "슬라이더를 천천히 움직이며 HUD의 Stability/Wobble 수치를 같이 봐 주세요.",
-                    "37°C 근처에서 멈춰서 화면에 뜨는 안내문을 읽어 보세요.",
+                    "리본 → 나선 → 원자 순서로 두 번 누르면 화면 아래에 온도 조절기가 나타나요. 앞의 두 단계에는 조절기가 없어요.",
+                    "조절기가 나오면 37도 근처에서 멈춰 화면에 뜨는 안내문을 읽어 보세요.",
                 },
                 llmContext = "실제 논문 데이터에 기반한 연출이다 — Y220C는 야생형 p53보다 열 안정성이 " +
                              "낮아 생리 온도에서도 unfolding 경향이 두드러진다. 다만 '완전히 풀린다'가 " +

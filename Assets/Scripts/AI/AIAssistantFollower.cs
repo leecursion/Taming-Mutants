@@ -74,8 +74,12 @@ public class AIAssistantFollower : MonoBehaviour
              "투영 자체를 잘못 재서 깨지기 때문이다. ThermalStabilityController처럼 클로즈업 연출을 " +
              "트는 쪽이 SetCloseUpOverride()로 켜고 끈다.")]
     public bool closeUpOverrideActive;
-    [Tooltip("오버라이드 중 사용할 사용자 기준 오프셋 (localOffset과 같은 축 규칙: x=오른쪽, y=위, z=앞)")]
-    public Vector3 closeUpLocalOffset = new Vector3(0.4f, 0.15f, 0.7f);
+    [Tooltip("오버라이드 중 사용할 사용자 기준 오프셋 (localOffset과 같은 축 규칙: x=오른쪽, y=위, z=앞).\n\n" +
+             "z(카메라와의 거리)가 곧 비서가 화면에서 차지하는 크기다. 평소(anchorTarget 옆 " +
+             "ScreenSpace 배치)에는 분자까지 거리에서 anchorOffset.z만큼 당긴 자리에 서므로 대략 " +
+             "1.8m인데, 여기 z를 0.7 같은 작은 값으로 두면 그 사건에서만 비서가 2배 이상 커 보인다. " +
+             "방향(x:z, y:z 비율)은 localOffset과 같게 두어 화면상 위치는 평소와 같은 자리를 유지한다.")]
+    public Vector3 closeUpLocalOffset = new Vector3(0.65f, 0.36f, 1.3f);
 
     [Header("바라보기")]
     [Tooltip("켜면 항상 사용자를 향한다. 끄면 사용자와 같은 방향을 본다.")]
