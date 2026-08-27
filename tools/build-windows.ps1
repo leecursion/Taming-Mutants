@@ -72,6 +72,14 @@ if (-not (Test-Path $exePath)) {
     throw "빌드는 끝났지만 exe가 없습니다: $exePath"
 }
 
+# Burst 디버그 심볼은 이름 그대로 배포하면 안 된다. 제출물 크기만 키우고
+# 내부 함수명을 그대로 노출한다.
+Get-ChildItem $stageDir -Directory -Filter "*_BurstDebugInformation_DoNotShip" |
+    ForEach-Object {
+        Write-Host "  제외: $($_.Name)" -ForegroundColor DarkGray
+        Remove-Item $_.FullName -Recurse -Force
+    }
+
 # 제출물 안내문을 빌드 폴더에 함께 넣는다.
 $readmeSource = Join-Path $PSScriptRoot "SUBMISSION_README.txt"
 if (Test-Path $readmeSource) {
