@@ -495,6 +495,11 @@ public class AIAssistantBrain : MonoBehaviour
         var selection = new System.Text.StringBuilder();
         selection.Append($"후보물질 '{compound.display_name}'");
         if (!string.IsNullOrWhiteSpace(compound.subtitle)) selection.Append($" ({compound.subtitle})");
+        // 이름표에 띄우는 이름은 중학생용으로 짧게 줄인 한국어라, 그것만 넘기면 모델이 어떤 약물
+        // 계열인지 알 수 없어 설명을 지어낸다. 학술명은 여기서만 보태고, 부를 때는 위의 짧은
+        // 이름을 쓰게 한다 — 화면 이름표와 비서 말이 어긋나면 학생이 둘을 연결하지 못한다.
+        if (!string.IsNullOrWhiteSpace(compound.scientific_name))
+            selection.Append($" [실제 모델: {compound.scientific_name} — 학생에게는 위의 짧은 이름으로 부를 것]");
         selection.Append($" / 판정: {DescribeOutcome(result)}");
 
         // 진입조차 못 한 경우의 친화도 값은 의미가 없다 — 패널도 "측정 불가"로 표시한다.

@@ -44,6 +44,15 @@ public class AIAssistantFollower : MonoBehaviour
     [Tooltip("x = 사용자가 볼 때 오른쪽, y = 위, z = 대상에서 사용자 쪽으로 당기는 거리 (단위 m). " +
              "ScreenSpace 모드에서는 x/y를 무시하고 z(깊이 당김)만 쓴다.")]
     public Vector3 anchorOffset = new Vector3(0.62f, 0.35f, 1.2f);
+    [Tooltip("anchorOffset.z로 당길 수 있는 최대 비율(카메라~대상 거리 대비). " +
+             "고정 거리로만 당기면 카메라가 대상에 가까이 붙는 레벨에서 깊이가 근평면까지 " +
+             "무너진다 — LevelRig 기준 Level2_Protein은 카메라가 구조에서 3.2 unit이라 " +
+             "1.2를 당겨도 2.0이 남지만, 아미노산/도킹 단계인 Level4_Docking은 1.2 unit이라 " +
+             "그대로 당기면 0이 되어 비서가 렌즈 앞 0.35 unit(근평면)에 박히고 화면 계산 " +
+             "전체가 깨진다. 기본값 0.375는 Level2에서 3.2 x 0.375 = 1.2로 기존 동작과 " +
+             "정확히 같고, 가까운 레벨에서만 당김을 비례로 줄인다.")]
+    [Range(0.05f, 0.9f)]
+    public float maxPullFraction = 0.375f;
 
     [Header("가림 방지 (ScreenSpace 모드)")]
     [Tooltip("대상의 화면 사각형에서 얼마나 띄울지. 화면 높이 대비 비율.")]
@@ -52,6 +61,11 @@ public class AIAssistantFollower : MonoBehaviour
     public float screenEdgePadding = 0.025f;
     [Tooltip("대상의 경계를 다시 재는 주기(초). 원자가 새로 생기면 주기와 무관하게 즉시 다시 잰다.")]
     public float anchorBoundsRefreshInterval = 2f;
+    [Tooltip("레벨(리본/Helix/아미노산) 전환 시 경계를 즉시 다시 재기 위해 구독한다. " +
+             "비우면 씬에서 자동 탐색. 레벨 전환은 원자를 새로 만들지 않고 SetActive로 켜고 끄기만 " +
+             "해서 자식 수가 그대로라, 이 구독이 없으면 최대 anchorBoundsRefreshInterval초 동안 " +
+             "직전 레벨의 경계를 기준으로 자리를 잡는다.")]
+    public StructureLevelController levelController;
 
     [Header("따라오기 (lazy-follow)")]
     [Tooltip("정위치가 이 반경 밖으로 벗어났을 때만 다시 쫓아간다. 작은 머리 움직임에는 반응하지 않는다.")]
@@ -69,17 +83,20 @@ public class AIAssistantFollower : MonoBehaviour
     public float swayFrequency = 0.33f;
 
     [Header("일시적 오버라이드 (예: p53 열안정성 카메라 클로즈업)")]
-    [Tooltip("켜져 있는 동안은 anchorTarget(분자) 옆 배치 대신 사용자(카메라) 옆 배치로 전환한다. " +
-             "카메라가 분자 전체가 아니라 좁은 부위로 확 당겨지면 ScreenSpace 배치가 분자의 화면 " +
-             "투영 자체를 잘못 재서 깨지기 때문이다. ThermalStabilityController처럼 클로즈업 연출을 " +
-             "트는 쪽이 SetCloseUpOverride()로 켜고 끈다.")]
+    [Tooltip("클로즈업 연출 중임을 알리는 스위치. ThermalStabilityController처럼 카메라를 좁은 " +
+             "부위로 당기는 쪽이 SetCloseUpOverride()로 켜고 끈다.\n\n" +
+             "켜져 있어도 화면 사각형 회피(ScreenSpace)는 그대로 시도한다 — 예전에는 곧바로 " +
+             "closeUpLocalOffset 고정 배치로 빠졌는데, 그러면 비서가 구조를 가려도 비켜서지 " +
+             "않는다. 분자가 카메라 평면을 걸쳐 화면 투영이 성립하지 않을 때만 그 폴백을 쓴다.")]
     public bool closeUpOverrideActive;
-    [Tooltip("오버라이드 중 사용할 사용자 기준 오프셋 (localOffset과 같은 축 규칙: x=오른쪽, y=위, z=앞).\n\n" +
-             "z(카메라와의 거리)가 곧 비서가 화면에서 차지하는 크기다. 평소(anchorTarget 옆 " +
-             "ScreenSpace 배치)에는 분자까지 거리에서 anchorOffset.z만큼 당긴 자리에 서므로 대략 " +
-             "1.8m인데, 여기 z를 0.7 같은 작은 값으로 두면 그 사건에서만 비서가 2배 이상 커 보인다. " +
-             "방향(x:z, y:z 비율)은 localOffset과 같게 두어 화면상 위치는 평소와 같은 자리를 유지한다.")]
-    public Vector3 closeUpLocalOffset = new Vector3(0.65f, 0.36f, 1.3f);
+    [Tooltip("오버라이드 중 화면 계산이 실패했을 때만 쓰는 폴백 오프셋 (localOffset과 같은 축 규칙: " +
+             "x=오른쪽, y=위, z=앞).\n\n" +
+             "z(카메라와의 거리)가 곧 비서가 화면에서 차지하는 크기다. 여기 z를 작은 값으로 두면 " +
+             "그 사건에서만 비서가 커 보이고, 클로즈업 카메라~구조 거리보다 작으면 아예 구조 정면에 " +
+             "선다 — 사건 5의 ThermalStabilityController.cameraCloseUpDistance(1.5)와 같은 값에 " +
+             "맞춰 두어 '앞'이 아니라 '옆'이 되게 한다. 방향(x:z, y:z 비율)은 localOffset과 같게 " +
+             "두어 화면상 위치는 평소와 같은 자리를 유지한다.")]
+    public Vector3 closeUpLocalOffset = new Vector3(0.75f, 0.42f, 1.5f);
 
     [Header("바라보기")]
     [Tooltip("켜면 항상 사용자를 향한다. 끄면 사용자와 같은 방향을 본다.")]
@@ -117,10 +134,26 @@ public class AIAssistantFollower : MonoBehaviour
         _noiseSeed = Random.value * 100f; // 비서가 여러 개여도 같은 박자로 흔들리지 않게
     }
 
+    private void OnEnable()
+    {
+        if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>();
+        if (levelController != null) levelController.OnLevelChanged += HandleLevelChanged;
+    }
+
+    private void OnDisable()
+    {
+        if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
+    }
+
     private void Start()
     {
         SnapToAnchor(); // 원점에서 날아오는 연출 방지
     }
+
+    // 레벨이 바뀌면 보이는 원자 집합이 통째로 달라진다. SetLevel은 OnLevelChanged를 쏘기 전에
+    // 이미 SetVisibleResidues/SetActive를 끝내므로, 이 시점에 캐시를 버리면 같은 프레임의
+    // LateUpdate가 새 경계로 다시 잰다. LevelStage.InvalidateSharedContent와 같은 처방이다.
+    private void HandleLevelChanged(StructureLevelController.ViewLevel level) => InvalidateAnchorBounds();
 
     // 카메라(또는 XR 헤드 포즈)가 갱신된 뒤에 위치를 잡아야 한 프레임 밀리지 않는다.
     private void LateUpdate()
@@ -159,7 +192,22 @@ public class AIAssistantFollower : MonoBehaviour
 
     private Vector3 ComputeAnchor()
     {
-        if (closeUpOverrideActive) return ComputeUserRelativeAnchor(closeUpLocalOffset);
+        // 클로즈업 중에도 대상의 화면 사각형을 피하는 계산을 먼저 시도한다.
+        // 예전에는 여기서 곧바로 카메라 기준 고정 오프셋으로 빠졌는데, 그 오프셋의 깊이
+        // (closeUpLocalOffset.z)가 클로즈업 카메라~구조 거리보다 가까우면 비서가 구조 정면에
+        // 서게 된다 — 사건 5는 ThermalStabilityController.cameraCloseUpDistance가 1.5인데
+        // closeUpLocalOffset.z가 1.3이라 항상 그랬다. 화면 계산이 성립하면 그쪽이 언제나 낫고,
+        // 성립하지 않을 때(구조가 카메라 평면을 걸쳐 투영이 뒤집힐 때)만 고정 오프셋으로 물러난다.
+        if (closeUpOverrideActive)
+        {
+            if (anchorTarget != null && anchorPlacement == AIAssistantAnchorPlacement.ScreenSpace)
+            {
+                Camera cam = ResolveCamera();
+                if (cam != null && TryComputeAnchorOnScreen(cam, out Vector3 onScreen)) return onScreen;
+            }
+            return ComputeUserRelativeAnchor(closeUpLocalOffset);
+        }
+
         if (anchorTarget != null) return ComputeAnchorBesideTarget();
 
         return ComputeUserRelativeAnchor(localOffset);
@@ -218,8 +266,13 @@ public class AIAssistantFollower : MonoBehaviour
         if (!TryProjectToViewport(cam, targetBounds, out Rect targetRect)) return false;
 
         // 비서가 설 깊이. 대상보다 사용자 쪽으로 당겨야 분자에 파묻히지 않는다.
-        float depth = Vector3.Distance(cam.transform.position, targetBounds.center) - anchorOffset.z;
-        depth = Mathf.Max(depth, cam.nearClipPlane + 0.05f);
+        // 당김은 고정 거리(anchorOffset.z)가 아니라 "거리의 일정 비율까지"로 제한한다 —
+        // 고정 거리로 당기면 카메라가 구조에 붙는 레벨에서 깊이가 0 이하로 내려가 근평면에
+        // 걸리고, 그 깊이에서는 뷰포트 1.0이 덮는 월드 크기가 비서 어셈블리보다 작아져
+        // 아래 여백/clamp 계산이 통째로 무의미해진다(maxPullFraction 참고).
+        float toTarget = Vector3.Distance(cam.transform.position, targetBounds.center);
+        float pull = Mathf.Min(anchorOffset.z, toTarget * maxPullFraction);
+        float depth = Mathf.Max(toTarget - pull, cam.nearClipPlane + 0.05f);
 
         // 그 깊이에서 뷰포트 1.0이 덮는 월드 크기. 어셈블리 여유(m)를 뷰포트 단위로 바꾸는 데 쓴다.
         float viewHeight = cam.orthographic
@@ -263,11 +316,24 @@ public class AIAssistantFollower : MonoBehaviour
         }
 
         // 그래도 안 들어가면(대상이 화면을 꽉 채운 경우) 가림 방지보다 "보이는 것"이 우선이다.
-        vx = Mathf.Clamp(vx, padX - vLeft, maxVx);
-        vy = Mathf.Clamp(vy, screenEdgePadding - vBottom, 1f - screenEdgePadding - vTop);
+        // 다만 어셈블리가 화면보다 커지면 하한이 상한을 넘어선다(말풍선이 화면 가로의 1/3을
+        // 예약하므로 깊이가 얕을수록 쉽게 그렇게 된다). Mathf.Clamp는 뒤집힌 범위를 받으면
+        // 하한을 그대로 돌려줘 비서를 화면 밖으로 밀어내므로, 그때는 남은 자리 한가운데에
+        // 둔다 — 어차피 완전히 비켜설 수 없는 상황이라 최소한 화면 안에는 남는다.
+        vx = ClampOrCenter(vx, padX - vLeft, maxVx);
+        vy = ClampOrCenter(vy, screenEdgePadding - vBottom, 1f - screenEdgePadding - vTop);
 
         position = cam.ViewportToWorldPoint(new Vector3(vx, vy, depth));
         return true;
+    }
+
+    /// <summary>
+    /// 범위가 정상이면 clamp, 하한이 상한을 넘어서면(들어갈 자리가 아예 없으면) 그 중간값.
+    /// Mathf.Clamp는 뒤집힌 범위에서 하한을 돌려주기 때문에 그대로 쓰면 화면 밖으로 나간다.
+    /// </summary>
+    private static float ClampOrCenter(float value, float min, float max)
+    {
+        return min <= max ? Mathf.Clamp(value, min, max) : (min + max) * 0.5f;
     }
 
     /// <summary>
@@ -503,6 +569,16 @@ public class AIAssistantFollower : MonoBehaviour
 
     // --- 외부 제어 API ---
 
+    /// <summary>
+    /// 대상의 경계 캐시를 버려 다음 프레임에 다시 재게 한다.
+    /// 자식 수는 그대로인 채 보이는 것만 바뀌는 변화(레벨 전환, 잔기 필터)를 겪은 쪽이 호출한다 —
+    /// <see cref="TryGetAnchorWorldBounds"/>의 자식 수 감시로는 그런 변화를 잡을 수 없다.
+    /// </summary>
+    public void InvalidateAnchorBounds()
+    {
+        _hasAnchorBounds = false;
+    }
+
     /// <summary>정위치로 즉시 이동. 씬 전환 직후나 텔레포트 후에 호출한다.</summary>
     public void SnapToAnchor()
     {
@@ -530,9 +606,9 @@ public class AIAssistantFollower : MonoBehaviour
 
     /// <summary>
     /// ThermalStabilityController처럼 카메라를 분자의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
-    /// 연출 시작/종료에 맞춰 호출한다. true면 anchorTarget 옆 배치를 잠시 멈추고 사용자 옆으로
-    /// 옮기며, false면 원래 배치로 되돌린다. 실제 이동은 기존 lazy-follow(SmoothDamp)를 그대로
-    /// 타므로 순간이동 없이 부드럽게 전환된다.
+    /// 연출 시작/종료에 맞춰 호출한다. 켜져 있는 동안에도 화면 사각형 회피는 그대로 돌고,
+    /// 그 계산이 성립하지 않을 때만 <see cref="closeUpLocalOffset"/> 고정 배치로 물러난다.
+    /// 실제 이동은 기존 lazy-follow(SmoothDamp)를 그대로 타므로 순간이동 없이 부드럽게 전환된다.
     /// </summary>
     public void SetCloseUpOverride(bool active)
     {

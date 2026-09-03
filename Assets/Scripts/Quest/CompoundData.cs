@@ -52,8 +52,15 @@ public struct DockingResult
 public class CompoundData
 {
     public string id;
+    [Tooltip("선택 패널 이름표 1행 + 비서가 부르는 이름. 이름표는 TextMesh라 자동 줄바꿈이 없어, " +
+             "칸 간격(boxSize+spacing) 안에 들어가려면 한글 11자/영문 22자를 넘기면 안 된다 — " +
+             "넘기면 옆 칸 이름표와 겹친다. 학술명은 scientific_name에 둔다.")]
     public string display_name;
+    [Tooltip("이름표 2행(<size=28>). 같은 이유로 한글 19자/영문 38자가 한계다.")]
     public string subtitle;
+    [Tooltip("원래의 학술명/모델 근거. 이름표에는 띄우지 않고 비서 컨텍스트로만 넘긴다 — " +
+             "display_name을 중학생용 짧은 한국어로 바꾸면서 밀려난 정보를 여기에 보관한다.")]
+    public string scientific_name;
     public string outcome;        // DockingOutcome 이름 문자열
     public float affinity;        // kcal/mol (음수일수록 강한 결합)
     public string result_message; // 도킹 시도 후 표시할 안내/경고 문구

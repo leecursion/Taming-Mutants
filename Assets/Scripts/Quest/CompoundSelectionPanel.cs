@@ -117,7 +117,8 @@ public class CompoundSelectionPanel : MonoBehaviour
     public StructureLevelController levelController;
 
     [Header("라벨")]
-    [Tooltip("한글 표시를 위해 한글 글리프가 포함된 폰트를 지정 (비우면 내장 LegacyRuntime — 한글 미지원)")]
+    [Tooltip("비우면 HoloFont의 공용 한글 폰트를 쓴다(권장). 이름표가 한글이므로 한글 글리프가 " +
+             "없는 폰트를 지정하면 글자가 통째로 안 보인다")]
     public Font labelFont;
     [Tooltip("화합물 이름/부제 글씨 색. 배경판 없이 어두운 씬 위에 바로 얹히므로 흰색이 기본")]
     public Color labelColor = Color.white;
@@ -166,8 +167,11 @@ public class CompoundSelectionPanel : MonoBehaviour
     private void Awake()
     {
         if (targetCamera == null) targetCamera = Camera.main;
+        // 내장 LegacyRuntime.ttf에는 한글 글리프가 없다. 씬(Lab_Desktop)의 labelFont가 비어 있어
+        // 여기로 폴백하는데, 후보물질 이름표가 한글이 되면서 글자가 통째로 안 보이게 됐다.
+        // 프로젝트의 다른 모든 텍스트(말풍선/HUD/퀘스트 보드)가 쓰는 공용 한글 폰트로 맞춘다.
         if (labelFont == null)
-            labelFont = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            labelFont = HoloFont.Resolve();
         if (useHoloOrbStyle && hologramShellMaterial == null)
         {
             Shader holo = Shader.Find("Custom/Hologram");
