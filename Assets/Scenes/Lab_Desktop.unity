@@ -42906,9 +42906,11 @@ MonoBehaviour:
   anchorTarget: {fileID: 867139254}
   anchorPlacement: 1
   anchorOffset: {x: 0.62, y: 0.35, z: 1.2}
+  maxPullFraction: 0.375
   screenMargin: 0.04
   screenEdgePadding: 0.025
   anchorBoundsRefreshInterval: 2
+  levelController: {fileID: 0}
   deadZoneRadius: 0.15
   followSmoothTime: 0.35
   maxFollowSpeed: 6
@@ -42917,7 +42919,7 @@ MonoBehaviour:
   swayAmplitude: 0.02
   swayFrequency: 0.33
   closeUpOverrideActive: 0
-  closeUpLocalOffset: {x: 0.65, y: 0.36, z: 1.3}
+  closeUpLocalOffset: {x: 0.75, y: 0.42, z: 1.5}
   faceUser: 1
   turnSpeed: 6
   bankPerSpeed: 6
