@@ -1,4 +1,4 @@
-# ✅ Project To-Do List
+#  Project To-Do List
 
 > 프로젝트 진행 상황을 관리하기 위한 To-Do List입니다.  
 
