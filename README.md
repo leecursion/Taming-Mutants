@@ -11,15 +11,6 @@
 
 ---
 
-# 👥 Team
-
-| Member | Role | Main Responsibilities |
-|---|---|---|
-| **Member 1** | Developer / Research | Core implementation, model/system development, experiments |
-| **Member 2** | Developer / Research | Feature implementation, data/UI/system integration, testing |
-
----
-
 # 🔥 Current Sprint
 
 ## 이재원
