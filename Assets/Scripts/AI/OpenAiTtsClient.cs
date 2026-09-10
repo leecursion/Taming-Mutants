@@ -33,12 +33,22 @@ public enum OpenAiVoice
 ///
 /// 같은 문장을 다시 읽는 일이 잦으므로(단계 브리핑, 반복되는 안내 문구) 마지막 몇 개를
 /// 캐시해 둔다. 같은 대사에 매번 돈과 대기 시간을 쓸 이유가 없다.
+///
+/// 목소리를 고정하고 싶으면 <see cref="model"/>을 tts-1-hd로 둔다. gpt-4o-mini-tts는
+/// 말투 지시를 알아듣는 대신 생성형이라 같은 voice 값을 보내도 요청마다 음색이 달라진다.
+/// 말풍선은 긴 답을 조각내 조각마다 따로 합성하므로(<see cref="Prewarm"/>), 그 흔들림이
+/// 한 답변 안에서도 화자가 바뀌는 것처럼 들린다. /v1/audio/speech에는 seed가 없어
+/// 이 모델로는 결정론적으로 고정할 방법이 없다.
 /// </summary>
 public class OpenAiTtsClient : TextToSpeechBackend
 {
     [Header("엔드포인트")]
     public string endpoint = "https://api.openai.com/v1/audio/speech";
-    public string model = "gpt-4o-mini-tts";
+
+    [Tooltip("tts-1-hd: 화자가 고정이라 몇 번을 불러도 같은 목소리가 납니다. 말투 지시(instructions)는 무시됩니다.\n" +
+             "gpt-4o-mini-tts: 말투 지시를 받아주지만 생성형이라 요청마다 음색이 흔들립니다.\n" +
+             "프록시를 쓰는 경우 서버가 허용한 목록(gpt-4o-mini-tts / tts-1-hd / tts-1) 안에서만 고를 수 있습니다.")]
+    public string model = "tts-1-hd";
 
     [Header("목소리")]
     [Tooltip("교육용으로는 Coral(따뜻함) / Shimmer(부드러움) / Sage(차분함)를 권합니다. " +
@@ -48,8 +58,8 @@ public class OpenAiTtsClient : TextToSpeechBackend
     public string voiceOverride = "";
 
     [TextArea(3, 6)]
-    [Tooltip("말투 지시. gpt-4o-mini-tts 계열이 지원하며, 목소리를 바꾸는 것보다 이쪽이 훨씬 크게 바뀝니다. " +
-             "비워두면 보내지 않습니다(구형 tts-1 모델은 이 항목을 받지 않습니다).")]
+    [Tooltip("말투 지시. gpt-4o-mini-tts 계열만 지원합니다. tts-1 계열에서는 보내지 않습니다.\n" +
+             "이 지시를 쓰려면 음색이 요청마다 흔들리는 것을 감수해야 합니다 — 모델이 지시를 매번 새로 해석합니다.")]
     public string instructions =
         "중학생에게 과학을 설명해 주는, 친근하지만 정중한 연구원처럼 말하세요. " +
         "밝고 다정한 톤으로, 살짝 들뜬 호기심이 느껴지게 읽습니다. " +
@@ -125,12 +135,13 @@ public class OpenAiTtsClient : TextToSpeechBackend
 
         audioSource.playOnAwake = false;
 
-        // instructions는 gpt-4o 계열 음성 모델만 받는다. 구형 모델에 보내면 400으로 거절되거나
+        // instructions는 gpt-4o 계열 음성 모델만 받는다. 다른 모델에 보내면 400으로 거절되거나
         // 조용히 무시돼, 말투를 아무리 고쳐도 결과가 그대로인 채로 헤매게 된다.
+        // 목소리를 고정하려고 tts-1 계열을 쓰는 중이면 이건 정상이므로 경고가 아니라 안내로 남긴다.
         if (!string.IsNullOrWhiteSpace(instructions) && !SupportsInstructions())
         {
-            Debug.LogWarning($"[OpenAiTtsClient] 모델 '{model}'은 말투 지시(instructions)를 지원하지 않을 수 있습니다. " +
-                             "말투가 반영되지 않으면 gpt-4o-mini-tts로 바꾸세요.", this);
+            Debug.Log($"[OpenAiTtsClient] 모델 '{model}'은 말투 지시(instructions)를 받지 않아 보내지 않습니다. " +
+                      "대신 요청마다 같은 목소리가 납니다. 말투를 살리려면 gpt-4o-mini-tts로 바꾸되, 음색이 흔들리는 것을 감수해야 합니다.", this);
         }
         // 비서 목소리는 방향감이 필요 없다. 3D로 두면 비서가 화면 가장자리로 갈 때 한쪽 귀에서만 들린다.
         audioSource.spatialBlend = 0f;

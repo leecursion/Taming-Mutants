@@ -14616,8 +14616,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   endpoint: https://api.openai.com/v1/audio/speech
-  model: gpt-4o-mini-tts
-  voice: 0
+  model: tts-1-hd
+  voice: 3
   voiceOverride: 
   instructions: "\uC911\uD559\uC0DD\uC5D0\uAC8C \uACFC\uD559\uC744 \uC124\uBA85\uD574
     \uC8FC\uB294 \uCE5C\uADFC\uD55C \uC120\uBC30 \uC5F0\uAD6C\uC6D0\uCC98\uB7FC \uB9D0\uD558\uC138\uC694.

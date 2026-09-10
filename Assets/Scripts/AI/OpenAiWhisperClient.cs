@@ -155,7 +155,7 @@ public class OpenAiWhisperClient : SpeechToTextBackend
 
     private void OnDisable()
     {
-        if (IsListening) Cancel();
+        Cancel();
     }
 
     public string ResolveApiKey()
@@ -252,14 +252,21 @@ public class OpenAiWhisperClient : SpeechToTextBackend
             return;
         }
 
-        StartCoroutine(TranscribeRoutine(wav));
+        _transcription = StartCoroutine(TranscribeRoutine(wav));
     }
+
+    private Coroutine _transcription;
+    private UnityWebRequest _transcriptionRequest;
 
     public override void Cancel()
     {
-        if (!IsListening) return;
-
-        EndRecording(out _);
+        if (IsListening) EndRecording(out _);
+        if (_transcriptionRequest != null) _transcriptionRequest.Abort();
+        if (_transcription != null) StopCoroutine(_transcription);
+        _transcription = null;
+        if (_transcriptionRequest != null) _transcriptionRequest.Dispose();
+        _transcriptionRequest = null;
+        IsTranscribing = false;
         InputLevel = 0f;
     }
 
@@ -309,6 +316,7 @@ public class OpenAiWhisperClient : SpeechToTextBackend
 
             using (UnityWebRequest request = UnityWebRequest.Post(RequestUrl, form, boundary))
             {
+                _transcriptionRequest = request;
                 if (UsingProxy)
                 {
                     // 프록시를 쓰면 키는 서버에만 있다. 여기서 보낼 것은 공유 토큰뿐이다.
@@ -344,11 +352,17 @@ public class OpenAiWhisperClient : SpeechToTextBackend
                     yield break;
                 }
 
+                // 이벤트가 새 녹음을 시작하거나 Cancel을 호출할 수 있어 먼저 소유권을 내려놓는다.
+                _transcriptionRequest = null;
+                _transcription = null;
+                IsTranscribing = false;
                 RaiseTranscribed(text);
             }
         }
         finally
         {
+            _transcriptionRequest = null;
+            _transcription = null;
             IsTranscribing = false;
         }
     }
