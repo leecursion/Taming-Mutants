@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -93,6 +93,8 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private void OnDisable()
     {
+        CancelPendingAdvance();
+        _advanceOwners.Clear();
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
         if (questSession != null) questSession.OnQuestStarted -= ApplyForSessionQuest;
     }
@@ -180,6 +182,7 @@ public class DockingQuestCatalog : MonoBehaviour
     private void ApplyQuest(int index, bool loadStructure)
     {
         if (index < 0 || index >= _quests.Count) return;
+        CancelPendingAdvance();
         CurrentIndex = index;
         DockingQuestDefinition def = _quests[index];
         Debug.Log($"[DockingQuestCatalog] 퀘스트 시작: {def.title} ({def.id})");
@@ -218,22 +221,60 @@ public class DockingQuestCatalog : MonoBehaviour
         OnQuestStarted?.Invoke(def);
     }
 
+
+    private readonly HashSet<object> _advanceOwners = new HashSet<object>();
+    private Coroutine _advanceRoutine;
+    private int _pendingNextIndex = -1;
+    private int _advanceGeneration;
+
+    /// <summary>질문과 채점 도중 구조가 바뀌지 않도록 예약된 전환까지 보류한다.</summary>
+    public void SuspendAutoAdvance(object owner)
+    {
+        if (owner == null || !_advanceOwners.Add(owner)) return;
+        if (_advanceRoutine != null) StopCoroutine(_advanceRoutine);
+        _advanceRoutine = null;
+    }
+
+    public void ResumeAutoAdvance(object owner)
+    {
+        if (owner == null || !_advanceOwners.Remove(owner) || _advanceOwners.Count > 0) return;
+        if (_pendingNextIndex >= 0 && isActiveAndEnabled)
+            _advanceRoutine = StartCoroutine(AdvanceAfterDelay(_pendingNextIndex));
+    }
+
+    private void CancelPendingAdvance()
+    {
+        _advanceGeneration++;
+        if (_advanceRoutine != null) StopCoroutine(_advanceRoutine);
+        _advanceRoutine = null;
+        _pendingNextIndex = -1;
+    }
+
     private void HandleDockingFinished(DockingResult result)
     {
-        // 세션(인트로 선택)이 있는 씬에서는 진행 순서를 세션이 소유한다 —
-        // 카탈로그가 멋대로 다음 도킹 퀘스트로 구조를 갈아치우면 안 된다.
+        // 세션이 있는 씬에서는 기존처럼 세션이 진행을 소유한다.
         if (questSession != null) return;
-        if (!result.IsSuccess || !autoAdvanceOnSuccess) return;
-
-        if (CurrentIndex + 1 < _quests.Count)
-            StartCoroutine(AdvanceAfterDelay(CurrentIndex + 1));
-        else
-            OnAllQuestsCompleted?.Invoke();
+        // CFTR 교정제의 중간 성공은 다음 사건으로 넘기지 않는다.
+        if (!result.IsSuccess || result.Compound == null || !result.Compound.completes_stage ||
+            !autoAdvanceOnSuccess || CurrentIndex < 0) return;
+        if (_pendingNextIndex >= 0) return;
+        _pendingNextIndex = CurrentIndex + 1;
+        if (_advanceOwners.Count == 0)
+            _advanceRoutine = StartCoroutine(AdvanceAfterDelay(_pendingNextIndex));
     }
 
     private IEnumerator AdvanceAfterDelay(int nextIndex)
     {
-        yield return new WaitForSeconds(autoAdvanceDelay);
-        StartQuest(nextIndex);
+        int generation = _advanceGeneration;
+        // 같은 도킹 이벤트의 다른 구독자가 잠금을 잡을 기회를 보장한다.
+        yield return null;
+        float deadline = Time.realtimeSinceStartup + Mathf.Max(0f, autoAdvanceDelay);
+        while (generation == _advanceGeneration &&
+               (_advanceOwners.Count > 0 || Time.realtimeSinceStartup < deadline)) yield return null;
+        if (generation != _advanceGeneration) yield break;
+        _advanceRoutine = null;
+        _pendingNextIndex = -1;
+        if (nextIndex < _quests.Count) StartQuest(nextIndex);
+        else OnAllQuestsCompleted?.Invoke();
     }
 }

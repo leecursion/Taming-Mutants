@@ -57,6 +57,10 @@ public class VoiceInputController : MonoBehaviour
     /// <summary>지금 녹음 중인지.</summary>
     public bool IsRecording => speechToText != null && speechToText.IsListening;
 
+    private int _recordingGeneration;
+    private bool _recordingOralAnswer;
+    private int _recordingOralRun;
+
     private Canvas _canvas;
     private GraphicRaycaster _raycaster;
     private Button _button;
@@ -147,6 +151,7 @@ public class VoiceInputController : MonoBehaviour
     /// </summary>
     private bool HiddenByAssistantSpeech()
     {
+        if (assistant != null && assistant.IsAwaitingOralAnswer) return false;
         if (!hideWhileAssistantSpeaks || interruptAssistantOnRecord) return false;
         if (IsRecording) return false;
         if (assistant == null) return false;
@@ -199,7 +204,7 @@ public class VoiceInputController : MonoBehaviour
         else
         {
             _background.color = idleColor;
-            SetHint("눌러서 질문하기");
+            SetHint(assistant != null && assistant.IsAwaitingOralAnswer ? "눌러서 답변하기" : "눌러서 질문하기");
         }
 
         if (_button != null) _button.interactable = IsRecording || !IsBlocked();
@@ -244,6 +249,9 @@ public class VoiceInputController : MonoBehaviour
     private bool IsBlocked()
     {
         if (speechToText.IsTranscribing) return true;
+        if (assistant != null && assistant.IsAwaitingOralAnswer)
+            return assistant.IsBusy;
+        if (assistant != null && assistant.IsOralCheckActive) return true;
         if (!blockWhileAssistantSpeaks || interruptAssistantOnRecord) return false;
 
         return assistant != null && assistant.IsBusy;
@@ -272,6 +280,9 @@ public class VoiceInputController : MonoBehaviour
             assistant.bubble.Hide();
 
         _silentSince = Time.time;
+        _recordingGeneration = assistant != null ? assistant.ConversationGeneration : 0;
+        _recordingOralAnswer = assistant != null && assistant.IsAwaitingOralAnswer;
+        _recordingOralRun = assistant != null ? assistant.OralRunId : 0;
         speechToText.StartListening();
     }
 
@@ -283,6 +294,16 @@ public class VoiceInputController : MonoBehaviour
             return;
         }
 
+        // 화면을 떠난 뒤 도착한 음성을 새 사건의 질문으로 보내지 않는다.
+        if (_recordingGeneration != assistant.ConversationGeneration) return;
+        if (_recordingOralAnswer && (!assistant.IsAwaitingOralAnswer || _recordingOralRun != assistant.OralRunId)) return;
+        if (assistant.IsAwaitingOralAnswer)
+        {
+            assistant.OfferOralAnswer(text);
+            return;
+        }
+        if (assistant.IsOralCheckActive) return;
+
         // 알아들은 말을 먼저 되읊어 준다. 잘못 들었을 때 사용자가 바로 알아채고 다시 물을 수 있다.
         assistant.SpeakNow($"\"{text}\" 라고 물어보셨네요. 잠깐만요!");
         assistant.AskAssistant(text);
@@ -292,6 +313,8 @@ public class VoiceInputController : MonoBehaviour
     {
         Debug.LogWarning($"[VoiceInputController] 음성 인식 실패: {reason}", this);
 
+        if (assistant != null && _recordingGeneration != assistant.ConversationGeneration) return;
+        if (_recordingOralAnswer && assistant != null && _recordingOralRun != assistant.OralRunId) return;
         if (assistant != null)
             assistant.SpeakNow("어? 잘 못 들었어요. 조금 더 또렷하게 다시 말씀해 주시겠어요?");
     }

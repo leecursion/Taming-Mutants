@@ -46,6 +46,7 @@ public class P53QuestDirector : MonoBehaviour
 
     private CanvasGroup _fadeOverlay;
     private bool _finalePlayed;
+    public bool IsFinalePlaying { get; private set; }
 
     private void Awake()
     {
@@ -74,7 +75,15 @@ public class P53QuestDirector : MonoBehaviour
         if (result.Compound == null || result.Compound.id != stabilizerCompoundId) return;
 
         _finalePlayed = true;
-        StartCoroutine(FinaleRoutine());
+        StartCoroutine(TrackedFinaleRoutine());
+    }
+
+    // 비서 대사 큐에는 없는 시각 연출도 끝난 뒤 질문할 수 있게 알린다.
+    private IEnumerator TrackedFinaleRoutine()
+    {
+        IsFinalePlaying = true;
+        try { yield return FinaleRoutine(); }
+        finally { IsFinalePlaying = false; }
     }
 
     private IEnumerator FinaleRoutine()

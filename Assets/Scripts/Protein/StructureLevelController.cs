@@ -125,6 +125,8 @@ public class StructureLevelController : MonoBehaviour
 
     private bool _inputLocked;
     public event Action<ViewLevel> OnLevelChanged;
+    /// <summary>단계 이동 전에 대기 중인 구술 확인을 취소할 수 있도록 알린다.</summary>
+    public event Action OnBackRequested;
 
     /// <summary>
     /// 아미노산 단계에서 카메라가 실제로 향하는 월드 지점.
@@ -493,6 +495,7 @@ public class StructureLevelController : MonoBehaviour
 
     public void GoBack()
     {
+        OnBackRequested?.Invoke();
         if (CurrentLevel == ViewLevel.AminoAcid) SetLevel(ViewLevel.Helix);
         else if (CurrentLevel == ViewLevel.Helix) SetLevel(ViewLevel.Ribbon);
         else OnExitRequested?.Invoke();

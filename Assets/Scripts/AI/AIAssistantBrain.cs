@@ -17,7 +17,7 @@ using UnityEngine;
 /// 네트워크가 끊기거나, 응답이 늦어도 퀘스트 진행은 한 번도 막히지 않는다.
 /// LLM 응답만으로 진행하게 만들면 백엔드가 준비되기 전까지 게임을 켤 수조차 없다.
 /// </summary>
-public class AIAssistantBrain : MonoBehaviour
+public partial class AIAssistantBrain : MonoBehaviour
 {
     [Header("비서 구성 요소 (비워두면 자신과 자식에서 찾는다)")]
     public AIAssistantVisual visual;
@@ -38,6 +38,10 @@ public class AIAssistantBrain : MonoBehaviour
     public StructureLevelController levelController;
     [Tooltip("말하는 동안 후보물질 선택을 막으려면 연결한다. 비워두면 씬에서 찾는다.")]
     public CompoundSelectionPanel compoundPanel;
+
+    [Header("사실 앵커링")]
+    [Tooltip("화면에서 확인 가능한 수치만 모아 LLM에 넘겨 환각을 막는다. 비워두면 자동으로 확보한다.")]
+    public StructureFactProvider factProvider;
 
     [Header("인트로 대사")]
     [TextArea(2, 4)]
@@ -158,6 +162,7 @@ public class AIAssistantBrain : MonoBehaviour
     // onReply에서 이 값이 바뀐 걸 보고 스스로 버린다 — "이전" 버튼으로 다른 화면으로 넘어간
     // 뒤에 뒤늦게 도착한 답이 새 화면 위에 얹혀 말해지는 것을 막는다.
     private int _conversationGeneration;
+
     // 힌트는 부르는 대로 하나씩 넘어간다. 단계가 바뀌면 처음으로 되돌린다.
     private int _hintIndex;
     // 도킹 시도 일련번호. 늦게 도착한 이전 시도의 LLM 답을 걸러내는 데 쓴다.
@@ -202,11 +207,16 @@ public class AIAssistantBrain : MonoBehaviour
         if (client != null) client.OnError += HandleClientError;
         if (mutationHighlighter != null) mutationHighlighter.OnMutationSelected += HandleMutationSelected;
         if (dockingQuest != null) dockingQuest.OnDockingFinished += HandleDockingFinished;
-        if (levelController != null) levelController.OnLevelChanged += HandleStructureLevelChanged;
+        if (levelController != null)
+        {
+            levelController.OnLevelChanged += HandleStructureLevelChanged;
+            levelController.OnBackRequested += HandleOralBackRequested;
+        }
     }
 
     private void OnDisable()
     {
+        CancelOralCheck();
         if (session != null)
         {
             session.OnQuestStarted -= HandleQuestStarted;
@@ -217,7 +227,11 @@ public class AIAssistantBrain : MonoBehaviour
         if (client != null) client.OnError -= HandleClientError;
         if (mutationHighlighter != null) mutationHighlighter.OnMutationSelected -= HandleMutationSelected;
         if (dockingQuest != null) dockingQuest.OnDockingFinished -= HandleDockingFinished;
-        if (levelController != null) levelController.OnLevelChanged -= HandleStructureLevelChanged;
+        if (levelController != null)
+        {
+            levelController.OnLevelChanged -= HandleStructureLevelChanged;
+            levelController.OnBackRequested -= HandleOralBackRequested;
+        }
     }
 
     private void Update()
@@ -256,6 +270,7 @@ public class AIAssistantBrain : MonoBehaviour
         bool speaking = IsBusy && !(bubble != null && bubble.IsPaused);
         bool locked = blockWhileWaitingForLlm ? speaking || (client != null && client.PendingRequests > 0) : speaking;
 
+        locked |= IsOralCheckActive && OralPhase != OralCheckPhase.Reviewing;
         if (levelController != null) levelController.InputLocked = locked;
         if (compoundPanel != null) compoundPanel.SpeechLocked = locked;
     }
@@ -314,6 +329,8 @@ public class AIAssistantBrain : MonoBehaviour
     public void ResetConversation()
     {
         _conversationGeneration++;
+        CancelOralCheck();
+        DismissOralResult();
         _hintIndex = 0;
         _narratedLevel = null;
         if (bubble != null) bubble.Hide();
@@ -425,6 +442,7 @@ public class AIAssistantBrain : MonoBehaviour
         // 시도를 세어 둔다. 실패 뒤에는 패널이 다시 열려 바로 다음 물질을 고를 수 있는데,
         // 그때 이전 시도의 LLM 답이 뒤늦게 도착하면 방금 시도한 물질의 설명인 척 끼어든다.
         int attempt = ++_dockingAttempt;
+        int generation = _conversationGeneration;
 
         SetState(result.IsSuccess ? AIAssistantState.Speaking : AIAssistantState.Alert);
 
@@ -436,6 +454,7 @@ public class AIAssistantBrain : MonoBehaviour
         if (!explainDockingWithLlm || !CanUseLlm)
         {
             if (!CanUseLlm) SpeakOfflineFallback();
+            TryStartOralCheck(result);
             return;
         }
 
@@ -444,10 +463,11 @@ public class AIAssistantBrain : MonoBehaviour
             onReply: reply =>
             {
                 // 그 사이 다른 물질을 시도했다면 이 답은 이미 지난 이야기다.
-                if (attempt != _dockingAttempt) return;
+                if (attempt != _dockingAttempt || generation != _conversationGeneration) return;
                 Speak(reply);
             },
             onFailed: _ => { /* 결과 문구는 이미 말했으므로 실패해도 진행에 지장이 없다 */ });
+        TryStartOralCheck(result);
     }
 
     /// <summary>결과 문구가 비어 있는 후보물질을 위한 바닥선. 최소한 판정은 알려준다.</summary>
@@ -540,7 +560,6 @@ public class AIAssistantBrain : MonoBehaviour
     }
 
     private void HandleDockingFinished(DockingResult result) => ReportDockingResult(result);
-
     // --- 퀘스트 이벤트 ---
 
     private void HandleQuestStarted(QuestDefinition quest)
@@ -548,6 +567,8 @@ public class AIAssistantBrain : MonoBehaviour
         // 직전 사건에서 나간 채 아직 도착하지 않은 답이 있다면 여기서 끊는다 — 그게 지금
         // 막 시작한 새 사건의 브리핑 뒤에 뒤늦게 끼어들지 않도록.
         _conversationGeneration++;
+        CancelOralCheck();
+        DismissOralResult();
         _hintIndex = 0;
         // 사건이 바뀌면 구조도 처음부터 다시 본다. 기억을 비우지 않으면 새 단백질의
         // 리본 단계에 들어가도 "이미 해설한 단계"로 보고 아무 말도 하지 않는다.
@@ -569,6 +590,8 @@ public class AIAssistantBrain : MonoBehaviour
 
     private void HandleStageEntered(QuestStageBriefing briefing)
     {
+        // 복습 이동은 퀴즈를 유지하지만 사용자가 다른 단계로 나가면 취소한다.
+        if (IsOralCheckActive && !_oralStageJump) CancelOralCheck();
         _hintIndex = 0;
         if (!announceStages || briefing == null) return;
 
@@ -945,21 +968,48 @@ public class AIAssistantBrain : MonoBehaviour
 
     private AIRequestContext BuildContext(string selection = null)
     {
-        if (session == null) return new AIRequestContext { selection = selection };
+        AIRequestContext context = session == null
+            ? new AIRequestContext { selection = selection }
+            : BuildQuestContext(session.CurrentQuest, selection);
 
-        AIRequestContext context = BuildQuestContext(session.CurrentQuest, selection);
-
-        context.stage = session.CurrentStage.ToString();
-
-        QuestStageBriefing briefing = session.CurrentBriefing;
-        if (briefing != null)
+        if (session != null)
         {
-            context.stageTitle = briefing.title;
-            context.stageObjective = briefing.objective;
-            context.stageKnowledge = briefing.llmContext;
+            context.stage = session.CurrentStage.ToString();
+
+            QuestStageBriefing briefing = session.CurrentBriefing;
+            if (briefing != null)
+            {
+                context.stageTitle = briefing.title;
+                context.stageObjective = briefing.objective;
+                context.stageKnowledge = briefing.llmContext;
+            }
         }
 
+        // 화면에서 확인 가능한 수치. 구조가 로드되기 전이면 빈 문자열이 온다.
+        context.facts = BuildFactsSafely();
+
         return context;
+    }
+
+    /// <summary>
+    /// 사실 블록을 만들되, 무슨 일이 있어도 질문 자체를 막지 않는다.
+    ///
+    /// 사실 블록은 있으면 좋은 추가 정보이지 질문의 전제 조건이 아니다. 여기서 예외가
+    /// 새어 나가면 BuildContext를 부르는 모든 경로(사용자 질문, 단계 브리핑, 도킹 해설)가
+    /// 함께 죽어 비서가 통째로 입을 다문다 — 환각을 막으려다 대화를 막는 셈이다.
+    /// </summary>
+    private string BuildFactsSafely()
+    {
+        try
+        {
+            if (factProvider == null) factProvider = StructureFactProvider.Ensure();
+            return factProvider != null ? factProvider.BuildFactBlock() : string.Empty;
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogWarning($"[AIAssistantBrain] 사실 블록 생성 실패 — 사실 없이 질문을 보냅니다. {e.Message}", this);
+            return string.Empty;
+        }
     }
 
     /// <summary>

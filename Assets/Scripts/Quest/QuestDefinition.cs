@@ -15,6 +15,9 @@ using UnityEngine;
 [CreateAssetMenu(fileName = "Quest_", menuName = "Taming Mutants/Quest Definition")]
 public class QuestDefinition : ScriptableObject
 {
+    [Header("사건 마무리 확인")]
+    public OralCheck oralCheck = new OralCheck();
+
     [Header("식별")]
     [Tooltip("저장 데이터와 LLM 컨텍스트에 쓰는 고유 id. 영문 소문자 + 언더스코어 권장.")]
     public string questId = "kras_g12c";
@@ -144,4 +147,26 @@ public class CandidateCompound
     [TextArea(1, 4)]
     [Tooltip("도킹 시도 결과로 비서가 말할 문장")]
     public string resultMessage;
+}
+
+/// <summary>선택한 이유를 자기 말로 설명하게 하여 실제 이해를 확인한다.</summary>
+[Serializable]
+public class OralCheck
+{
+    public bool enabled = true;
+    [TextArea(2, 4)] public string question;
+    [Tooltip("화면에 표시하지 않고 채점에만 쓰는 기준과 개념 키")]
+    [TextArea(3, 8)] public string criteria;
+    public OralConcept[] concepts = Array.Empty<OralConcept>();
+    [Tooltip("재시도를 소진하면 이 설명을 읽고 진행을 허용한다.")]
+    [TextArea(2, 5)] public string modelAnswer;
+}
+
+[Serializable]
+public class OralConcept
+{
+    public string key;
+    [TextArea(1, 3)] public string retryQuestion;
+    public QuestManagerSpatialUI.QuestStage reviewStage;
+    [TextArea(1, 3)] public string reviewHint;
 }
