@@ -103,11 +103,7 @@ public class AIAssistantFollower : MonoBehaviour
     public float swayFrequency = 0.33f;
 
     [Header("일시적 오버라이드 (예: p53 열안정성 카메라 클로즈업)")]
-    [Tooltip("클로즈업 연출 중임을 알리는 스위치. ThermalStabilityController처럼 카메라를 좁은 " +
-             "부위로 당기는 쪽이 SetCloseUpOverride()로 켜고 끈다.\n\n" +
-             "켜져 있어도 화면 사각형 회피(ScreenSpace)는 그대로 시도한다 — 예전에는 곧바로 " +
-             "closeUpLocalOffset 고정 배치로 빠졌는데, 그러면 비서가 구조를 가려도 비켜서지 " +
-             "않는다. 분자가 카메라 평면을 걸쳐 화면 투영이 성립하지 않을 때만 그 폴백을 쓴다.")]
+    [Tooltip("열안정성 실험 중에는 화면 위쪽에 머물며 천천히 위아래로 부유한다.")]
     public bool closeUpOverrideActive;
     [Tooltip("오버라이드 중 화면 계산이 실패했을 때만 쓰는 폴백 오프셋 (localOffset과 같은 축 규칙: " +
              "x=오른쪽, y=위, z=앞).\n\n" +
@@ -212,6 +208,16 @@ public class AIAssistantFollower : MonoBehaviour
         transform.localScale = _authoredScale * fit;
     }
 
+    // Every desktop quest shares the corner layout; the intro still uses its authored offset.
+    private bool UsesScreenCorner
+    {
+        get
+        {
+            Camera cam = ResolveCamera();
+            return cam != null && !cam.stereoEnabled && (anchorTarget != null || closeUpOverrideActive);
+        }
+    }
+
     // --- 위치 ---
 
     private void UpdatePosition()
@@ -226,7 +232,9 @@ public class AIAssistantFollower : MonoBehaviour
         if (_isChasing)
         {
             _anchorPosition = Vector3.SmoothDamp(
-                _anchorPosition, desired, ref _followVelocity, followSmoothTime, maxFollowSpeed);
+                _anchorPosition, desired, ref _followVelocity,
+                UsesScreenCorner ? 1.5f : followSmoothTime,
+                UsesScreenCorner ? 0.5f : maxFollowSpeed);
 
             if (Vector3.Distance(_anchorPosition, desired) < deadZoneRadius * SettleRatio)
             {
@@ -240,20 +248,19 @@ public class AIAssistantFollower : MonoBehaviour
 
     private Vector3 ComputeAnchor()
     {
-        // 클로즈업 중에도 대상의 화면 사각형을 피하는 계산을 먼저 시도한다.
-        // 예전에는 여기서 곧바로 카메라 기준 고정 오프셋으로 빠졌는데, 그 오프셋의 깊이
-        // (closeUpLocalOffset.z)가 클로즈업 카메라~구조 거리보다 가까우면 비서가 구조 정면에
-        // 서게 된다 — 사건 5는 ThermalStabilityController.cameraCloseUpDistance가 1.5인데
-        // closeUpLocalOffset.z가 1.3이라 항상 그랬다. 화면 계산이 성립하면 그쪽이 언제나 낫고,
-        // 성립하지 않을 때(구조가 카메라 평면을 걸쳐 투영이 뒤집힐 때)만 고정 오프셋으로 물러난다.
-        if (closeUpOverrideActive)
+        // A stable viewport anchor avoids chasing molecule bounds in every desktop quest.
+        if (UsesScreenCorner || closeUpOverrideActive)
         {
-            if (anchorTarget != null && anchorPlacement == AIAssistantAnchorPlacement.ScreenSpace)
+            Camera cam = ResolveCamera();
+            if (cam != null)
             {
-                Camera cam = ResolveCamera();
-                if (cam != null && TryComputeAnchorOnScreen(cam, out Vector3 onScreen)) return EnforceRightSide(onScreen);
+                float depth = Mathf.Max(closeUpLocalOffset.z, MinDepth(cam));
+                // Clamp from the corner so the assembly's outer edges, not its center,
+                // sit against the screen padding. Reserve room for the upward bob.
+                return EnforceRightSide(cam.ViewportToWorldPoint(new Vector3(1f, 1f, depth)))
+                    - cam.transform.up * 0.015f;
             }
-            return EnforceRightSide(ComputeUserRelativeAnchor(closeUpLocalOffset));
+            return ComputeUserRelativeAnchor(closeUpLocalOffset);
         }
 
         if (anchorTarget != null) return EnforceRightSide(ComputeAnchorBesideTarget());
@@ -306,7 +313,7 @@ public class AIAssistantFollower : MonoBehaviour
         float vx = Mathf.Min(Mathf.Max(projectable ? viewport.x : minVx, minVx), maxVx);
 
         float vy = projectable ? viewport.y : 1f - screenEdgePadding - vTop;
-        vy = ClampOrCenter(vy, screenEdgePadding - vBottom, Mathf.Min(0.82f, 1f - screenEdgePadding - vTop));
+        vy = ClampOrCenter(vy, screenEdgePadding - vBottom, Mathf.Min(UsesScreenCorner || closeUpOverrideActive ? 1f : 0.82f, 1f - screenEdgePadding - vTop));
 
         if (projectable && Mathf.Approximately(vx, viewport.x) && Mathf.Approximately(vy, viewport.y))
             return desired;
@@ -662,6 +669,8 @@ public class AIAssistantFollower : MonoBehaviour
     private Vector3 ComputeFloatOffset()
     {
         float t = Time.time + _noiseSeed;
+        if (UsesScreenCorner || closeUpOverrideActive)
+            return followTarget.up * (Mathf.Sin(t * Mathf.PI * 2f / 8f) * 0.015f);
         float bob = Mathf.Sin(t * bobFrequency * Mathf.PI * 2f) * bobAmplitude;
         float sway = Mathf.Sin(t * swayFrequency * Mathf.PI * 2f + 1.3f) * swayAmplitude;
         return Vector3.up * bob + followTarget.right * sway;
@@ -739,8 +748,8 @@ public class AIAssistantFollower : MonoBehaviour
 
     /// <summary>
     /// ThermalStabilityController처럼 카메라를 분자의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
-    /// 연출 시작/종료에 맞춰 호출한다. 켜져 있는 동안에도 화면 사각형 회피는 그대로 돌고,
-    /// 그 계산이 성립하지 않을 때만 <see cref="closeUpLocalOffset"/> 고정 배치로 물러난다.
+    /// 연출 시작/종료에 맞춰 호출한다. 켜져 있는 동안 화면 상단의 고정 위치를 사용하고,
+    /// 좌우 흔들림 없이 8초 주기로 부유한다.
     /// 실제 이동은 기존 lazy-follow(SmoothDamp)를 그대로 타므로 순간이동 없이 부드럽게 전환된다.
     /// </summary>
     public void SetCloseUpOverride(bool active)

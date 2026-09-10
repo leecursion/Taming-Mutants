@@ -115,6 +115,37 @@ public class ThermalStabilityController : MonoBehaviour
     // 도킹에 성공(안정화 리간드 결합)하면 true — 온도가 높아도 wobble이 거의 나지 않고
     // HUD는 "IMPROVED / LOW"를 유지한다("37°C에서 안정화 유지" 요구사항).
     private bool _stabilized;
+    public bool IsStabilized => _stabilized;
+    private float _stabilizationBlend;
+    private ThermalMutationEffects _mutationEffects;
+
+    private void ClearMutationEffects()
+    {
+        if (_mutationEffects != null)
+        {
+            _mutationEffects.gameObject.SetActive(false);
+            Destroy(_mutationEffects.gameObject);
+        }
+        _mutationEffects = null;
+    }
+
+    private void BuildMutationEffects()
+    {
+        ClearMutationEffects();
+        if (!_thermalStageActive || !_hasMutationAnchor || proteinLoader == null) return;
+        var baseline = new List<Vector3>();
+        for (int i = 0; i < _wobbleTargets.Count && baseline.Count < 24; i++)
+        {
+            if (_wobbleTargets[i] == null || !_wobbleTargets[i].gameObject.activeInHierarchy) continue;
+            var atom = _wobbleTargets[i].GetComponent<AtomInfo>();
+            if (atom != null && atom.AtomName == "CA" && _wobbleWeights[i] > .1f)
+                baseline.Add(_wobbleHomePositions[i]);
+        }
+        var root = new GameObject("MutationThermalCues");
+        root.transform.SetParent(proteinLoader.transform, false);
+        _mutationEffects = root.AddComponent<ThermalMutationEffects>();
+        _mutationEffects.Initialize(this, _mutationLocalPos, baseline);
+    }
     private const float StabilizedWobbleDamping = 0.12f;
 
     private Slider _slider;
@@ -157,6 +188,7 @@ public class ThermalStabilityController : MonoBehaviour
 
     private void OnDisable()
     {
+        ClearMutationEffects();
         if (proteinLoader != null) proteinLoader.OnLoaded -= HandleProteinLoaded;
         if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
         if (questCatalog != null) questCatalog.OnQuestStarted -= HandleQuestStarted;
@@ -167,6 +199,9 @@ public class ThermalStabilityController : MonoBehaviour
     private void HandleQuestStarted(DockingQuestDefinition def)
     {
         _isActiveQuest = def != null && def.id == activeForQuestId;
+        ClearMutationEffects();
+        _stabilizationBlend = 0f;
+        _stabilized = false;
         _sliderExplained = false; // 사건을 새로 시작하면 슬라이더 설명도 처음부터
 
         // 찍어둔 '제자리'는 그 사건의 카메라 자리다. 사건이 바뀌면 의미가 없으니 버린다.
@@ -206,6 +241,7 @@ public class ThermalStabilityController : MonoBehaviour
 
     private void Update()
     {
+        _stabilizationBlend = Mathf.MoveTowards(_stabilizationBlend, _stabilized ? 1f : 0f, Time.deltaTime / 1.5f);
         ApplyWobble();
     }
 
@@ -277,6 +313,7 @@ public class ThermalStabilityController : MonoBehaviour
     public void ExitThermalStage()
     {
         _thermalStageActive = false;
+        ClearMutationEffects();
         if (_sliderPanel != null) _sliderPanel.SetActive(false);
         if (hud != null) hud.gameObject.SetActive(false);
 
@@ -411,6 +448,8 @@ public class ThermalStabilityController : MonoBehaviour
         _noiseSeeds = new float[_wobbleTargets.Count];
         for (int i = 0; i < _noiseSeeds.Length; i++) _noiseSeeds[i] = Random.value * 100f;
 
+        BuildMutationEffects();
+
         // 새로 인덱싱했으니 지금 온도값을 다시 입혀 투명도가 원자 재생성 전 상태로 남지 않게 한다.
         ApplyTransparency(Normalized01);
     }
@@ -436,9 +475,10 @@ public class ThermalStabilityController : MonoBehaviour
         // 원자가 결합 실린더에서 떨어진 자리에 놓인 채로 단계가 바뀌고, ExitThermalStage가
         // 되돌려 놓은 제자리를 곧바로 다시 흐트러뜨린다.
         if (!_thermalStageActive) return;
-        if (_wobbleTargets.Count == 0 || Normalized01 <= 0f) return;
+        if (_wobbleTargets.Count == 0) return;
+        if (Normalized01 <= 0f) { RestoreWobbleHomePositions(); return; }
 
-        float amplitude = maxWobbleAmplitude * Normalized01 * (_stabilized ? StabilizedWobbleDamping : 1f);
+        float amplitude = maxWobbleAmplitude * Normalized01 * Mathf.Lerp(1f, StabilizedWobbleDamping, _stabilizationBlend);
         if (amplitude <= 0f) return;
 
         for (int i = 0; i < _wobbleTargets.Count; i++)
@@ -729,6 +769,7 @@ public class ThermalStabilityController : MonoBehaviour
         rootRect.pivot = new Vector2(0.5f, 0f);
         rootRect.anchoredPosition = new Vector2(0f, 40f);
         rootRect.sizeDelta = new Vector2(560f, 90f);
+        rootRect.gameObject.AddComponent<ScreenSafePanel>();
 
         CreateLayer(rootGo.transform, "Glow", HoloSpriteFactory.Glow(), new Color(0.35f, 0.85f, 1f, 0.16f), 16f);
         CreateLayer(rootGo.transform, "Panel", HoloSpriteFactory.Panel(), new Color(0.02f, 0.06f, 0.10f, 0.9f), 0f);

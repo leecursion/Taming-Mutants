@@ -282,6 +282,7 @@ public class DockingQuestController : MonoBehaviour
             case DockingOutcome.NoWarhead:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                PlayMutationContact(pocketCenter, "break", clone.transform);
                 yield return Shake(clone.transform, 0.5f, 0.02f); // 고정되지 않고 흔들림
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.2f, 0.5f, spin: true); // 튕겨 나옴
                 FinishFailure(slot, clone, noWarheadColor, outcome);
@@ -291,6 +292,7 @@ public class DockingQuestController : MonoBehaviour
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 Vector3 clashPoint = Vector3.Lerp(entrance, pocketCenter, Mathf.Clamp01(slot.Data.clash_depth));
                 yield return MoveTo(clone.transform, clashPoint, 0.45f, spin: false);
+                PlayMutationContact(clashPoint, "repel");
                 selectionPanel.Experiment.SetPhase("충돌 · 표시된 부위와 후보의 폭을 비교하세요");
                 StartCoroutine(BurstEffect(clashPoint, failColor, 0.3f, 0.9f));
                 yield return Shake(clone.transform, 0.6f, 0.035f);
@@ -302,6 +304,7 @@ public class DockingQuestController : MonoBehaviour
                 // 접근 도중 자석 반발: 입구 60% 지점에서 감속 후 밀려남
                 Vector3 repelPoint = Vector3.Lerp(clone.transform.position, entrance, 0.6f);
                 yield return MoveTo(clone.transform, repelPoint, approachDuration * 0.7f, spin: true);
+                PlayMutationContact(repelPoint, "repel");
                 yield return Repel(clone.transform, (repelPoint - pocketCenter).normalized, 1.5f, 0.8f);
                 FinishFailure(slot, clone, failColor, outcome);
                 break;
@@ -328,6 +331,7 @@ public class DockingQuestController : MonoBehaviour
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
                 if (hud != null) hud.SetStability(0.35f, "낮음 (잠깐 붙었다 떨어짐)");
+                PlayMutationContact(pocketCenter, "break", clone.transform);
                 yield return new WaitForSeconds(0.8f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.1f, 0.6f, spin: true);
                 FinishFailure(slot, clone, noWarheadColor, outcome);
@@ -404,6 +408,7 @@ public class DockingQuestController : MonoBehaviour
 
         // p53 Y220C 퀘스트: 안정화제가 포켓에 락인되면 wobble이 가라앉고
         // DNA 결합능이 회복된 것으로 표시한다(HUD Before/After 비교의 "After" 상태).
+        PlayMutationContact(pocketCenter, "lock", clone.transform);
         if (thermal != null) thermal.SetStabilized(true);
         if (hud != null) hud.SetDnaBindingCompetent(true);
 
@@ -497,6 +502,18 @@ public class DockingQuestController : MonoBehaviour
             IsOrderError = true,
             Message = slot.Data.order_error_message,
         });
+    }
+
+    private void PlayMutationContact(Vector3 point, string kind, Transform molecule = null)
+    {
+        if (selectionPanel == null || !selectionPanel.zoomOverrideActive || proteinLoader == null) return;
+        Transform root = proteinLoader.transform;
+        GameObject cue = MutationExperimentEffects.Play(root, root.InverseTransformPoint(point), .22f, kind, molecule);
+        if (cue != null)
+        {
+            AminoAcidOnlyVisual.Mark(cue, levelController);
+            _questSpawned.Add(cue);
+        }
     }
 
     private void FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)

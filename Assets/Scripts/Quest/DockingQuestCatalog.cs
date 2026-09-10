@@ -99,10 +99,8 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private IEnumerator Start()
     {
-        string baseUrl = $"{Application.streamingAssetsPath}/{questsFolder}";
-
         QuestCatalogData index = null;
-        yield return Fetch($"{baseUrl}/{indexFile}",
+        yield return Fetch($"{questsFolder}/{indexFile}",
             text => index = JsonUtility.FromJson<QuestCatalogData>(text));
         if (index == null || index.quests == null || index.quests.Count == 0)
         {
@@ -113,7 +111,7 @@ public class DockingQuestCatalog : MonoBehaviour
         foreach (string file in index.quests)
         {
             DockingQuestDefinition def = null;
-            yield return Fetch($"{baseUrl}/{file}",
+            yield return Fetch($"{questsFolder}/{file}",
                 text => def = JsonUtility.FromJson<DockingQuestDefinition>(text));
             if (def != null) _quests.Add(def);
         }
@@ -130,8 +128,10 @@ public class DockingQuestCatalog : MonoBehaviour
         }
     }
 
-    private IEnumerator Fetch(string url, Action<string> onSuccess)
+    /// <summary>StreamingAssets 기준 상대 경로를 받아 읽어온다.</summary>
+    private IEnumerator Fetch(string relativePath, Action<string> onSuccess)
     {
+        string url = StreamingAssetsUrl.For(relativePath);
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
             yield return req.SendWebRequest();

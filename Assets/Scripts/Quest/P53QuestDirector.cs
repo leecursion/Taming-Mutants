@@ -129,8 +129,12 @@ public class P53QuestDirector : MonoBehaviour
         yield return Fade(1f, 0f);
 
         yield return TetramerConvergeRoutine();
+        if (_dnaRoot != null)
+            MutationExperimentEffects.Play(_dnaRoot.transform, Vector3.zero, dnaHelixLength * .65f, "shield");
         if (dockingController != null && dockingController.selectionPanel != null)
             dockingController.selectionPanel.Experiment.FinishVerification("37°C · 처리 전후 비교: 흔들림 감소 / DNA 결합 회복");
+        // Let the shield trace and evidence stamp finish before completion can return to the quest board.
+        yield return new WaitForSeconds(3f);
         if (dockingController != null) dockingController.CompleteVerification();
 
         if (hud != null)

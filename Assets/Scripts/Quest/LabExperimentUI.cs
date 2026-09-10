@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -9,7 +10,9 @@ public class LabExperimentUI : MonoBehaviour
     private CompoundSelectionPanel _panel;
     private CompoundSlot _selected;
     private GameObject _root;
-    private Text _title, _detail, _status;
+    private RectTransform _notebookRect;
+    private Text _title, _detail, _status, _stamp;
+    private Coroutine _recordFeedback;
     private Button _start, _history;
     private readonly List<Button> _predictions = new List<Button>();
     private readonly List<string> _records = new List<string>();
@@ -21,9 +24,21 @@ public class LabExperimentUI : MonoBehaviour
     private string _verificationLabel;
     public string Prediction => _prediction;
 
+    // Same scale as the notebook's CanvasScaler (1600 x 900, match = 0.5).
+    // Reserve this space even before inspection so selecting a candidate never moves the grid.
+    public static float ReservedBottomViewportHeight
+    {
+        get
+        {
+            float scale = Mathf.Sqrt((Screen.width / 1600f) * (Screen.height / 900f));
+            return (Screen.safeArea.yMin + Mathf.Max(16f * scale, 20f) + 224f * scale) / Mathf.Max(Screen.height, 1);
+        }
+    }
+
     public void Inspect(CompoundSelectionPanel panel, CompoundSlot slot)
     {
         _panel = panel;
+        StopRecordFeedback();
         RestorePreview();
         _selected = slot;
         slot.MoleculeRoot.transform.localScale = Vector3.one * slot.DisplayFitScale * 1.12f;
@@ -31,16 +46,18 @@ public class LabExperimentUI : MonoBehaviour
         _prediction = null;
         _showHistory = false;
         EnsureUI();
+        _stamp.text = "";
         _detail.fontSize = 16;
         _title.text = slot.Data.display_name + " · 관찰";
         _detail.text = slot.Data.subtitle + "\n예상 효과를 고른 뒤 실험하세요. 분자는 좌우로 돌려 볼 수 있어요.";
-        _status.text = "관찰 → 예상 → 실험 → 기록";
+        _status.text = panel.zoomOverrideActive ? "옅은 잔상: 가열 전 위치 · 보라색: 변이 부위" : "관찰 → 예상 → 실험 → 기록";
         _status.color = Color.cyan;
         RefreshButtons();
     }
 
     public void ResetExperiment()
     {
+        StopRecordFeedback();
         RestorePreview();
         _hasContent = false;
         _historyPage = 0;
@@ -85,6 +102,7 @@ public class LabExperimentUI : MonoBehaviour
         _status.text = data.Outcome == DockingOutcome.Success && !orderError ?
             (data.completes_stage ? "효과 관찰 완료 · 기능 확인" : "첫 작업 완료 · 다음 후보를 선택하세요") : "기록 획득 · 다음 가설을 세워 보세요";
         _status.color = color;
+        ShowRecordFeedback(false);
         RestorePreview();
         _prediction = null;
         RefreshButtons();
@@ -105,10 +123,14 @@ public class LabExperimentUI : MonoBehaviour
         bool visible = _hasContent && _panel != null && _panel.isActiveAndEnabled &&
             (_panel.levelController == null || _panel.levelController.CurrentLevel == StructureLevelController.ViewLevel.AminoAcid);
         _root.SetActive(visible);
-        if (visible) RefreshButtons();
+        if (visible)
+        {
+            UpdateLayout();
+            RefreshButtons();
+        }
     }
 
-    private void OnDisable() { if (_root != null) _root.SetActive(false); }
+    private void OnDisable() { StopRecordFeedback(); if (_root != null) _root.SetActive(false); }
     private void OnDestroy() { RestorePreview(); if (_root != null) Destroy(_root); }
 
     private void RefreshButtons()
@@ -154,7 +176,51 @@ public class LabExperimentUI : MonoBehaviour
         _detail.text = evidence;
         _status.text = "관찰 증거를 기록했습니다";
         _status.color = Color.green;
+        ShowRecordFeedback(true);
         RefreshButtons();
+    }
+
+    private void StopRecordFeedback()
+    {
+        if (_recordFeedback != null) StopCoroutine(_recordFeedback);
+        _recordFeedback = null;
+        if (_history != null)
+        {
+            _history.transform.localScale = Vector3.one;
+            _history.GetComponentInChildren<Text>().text = "실험 기록";
+        }
+        if (_stamp != null) { _stamp.text = ""; _stamp.transform.localScale = Vector3.one; }
+    }
+
+    private void ShowRecordFeedback(bool verified)
+    {
+        StopRecordFeedback();
+        _recordFeedback = StartCoroutine(RecordFeedback(verified));
+    }
+
+    private IEnumerator RecordFeedback(bool verified)
+    {
+        // The completion title is short enough to leave room for this stamp.
+        if (verified) _stamp.text = "✓ 검증 완료";
+        string original = _history.GetComponentInChildren<Text>().text;
+        _history.GetComponentInChildren<Text>().text = "기록 +1";
+        for (float t = 0f; t < 1.2f; t += Time.unscaledDeltaTime)
+        {
+            float pulse = Mathf.Sin(Mathf.Clamp01(t / .4f) * Mathf.PI);
+            _history.transform.localScale = Vector3.one * (1f + .04f * pulse);
+            if (verified) _stamp.transform.localScale = Vector3.one * (1f + .1f * pulse);
+            yield return null;
+        }
+        _history.GetComponentInChildren<Text>().text = original;
+        _history.transform.localScale = _stamp.transform.localScale = Vector3.one;
+        _recordFeedback = null;
+    }
+
+    private void UpdateLayout()
+    {
+        _notebookRect.anchorMin = _notebookRect.anchorMax = Vector2.zero;
+        _notebookRect.pivot = Vector2.zero;
+        _notebookRect.anchoredPosition = new Vector2(16f, 16f);
     }
 
     private void EnsureUI()
@@ -173,12 +239,15 @@ public class LabExperimentUI : MonoBehaviour
         var background = new GameObject("Panel", typeof(RectTransform), typeof(Image));
         background.transform.SetParent(_root.transform, false);
         RectTransform rt = background.GetComponent<RectTransform>();
-        rt.anchorMin = rt.anchorMax = new Vector2(0.52f, 1f);
-        rt.pivot = new Vector2(0.5f, 1f);
-        rt.anchoredPosition = new Vector2(0f, -16f);
+        background.AddComponent<ScreenSafePanel>();
+        _notebookRect = rt;
+        UpdateLayout();
         rt.sizeDelta = new Vector2(510f, 208f);
         background.GetComponent<Image>().color = new Color(0.02f, 0.055f, 0.09f, 0.96f);
         _title = Label(rt, "후보를 관찰하세요", 16, 12, 478, 25, 19);
+        _stamp = Label(rt, "", 338, 12, 156, 25, 17);
+        _stamp.alignment = TextAnchor.MiddleRight;
+        _stamp.color = new Color(.25f, 1f, .8f);
         _detail = Label(rt, "", 16, 42, 478, 64, 16);
         _status = Label(rt, "", 16, 108, 478, 22, 15);
         _status.color = Color.cyan;
