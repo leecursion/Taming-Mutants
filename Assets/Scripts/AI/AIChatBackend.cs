@@ -82,7 +82,22 @@ public class AIRequestContext
     public string stageKnowledge; // QuestStageBriefing.llmContext
     public string selection;      // 지금 선택한 잔기/원자/후보물질
 
-    public string Compose()
+    /// <summary>
+    /// <see cref="StructureFactProvider.BuildFactBlock"/> 결과 — 화면에서 확인 가능한 수치 목록.
+    /// 비어 있을 수 있다(구조 로드 전, 선택 없음).
+    /// </summary>
+    public string facts;
+
+    /// <summary>
+    /// 컨텍스트를 한 덩어리 문자열로 만든다.
+    ///
+    /// <paramref name="includeFacts"/>가 false면 사실 블록을 빼고 만든다. 프록시를 쓰는
+    /// 경로(<see cref="AICoScientistClient"/>)는 사실을 별도 system 메시지로 따로 보내므로,
+    /// 여기에도 넣으면 같은 내용이 요청마다 두 번 실려 나간다.
+    /// 서버 없이 직접 호출하는 경로(<see cref="SolarChatClient"/>)는 분리할 자리가 없어
+    /// 이 덩어리에 포함해 보낸다.
+    /// </summary>
+    public string Compose(bool includeFacts = true)
     {
         var builder = new StringBuilder();
 
@@ -92,6 +107,9 @@ public class AIRequestContext
         Append(builder, string.IsNullOrEmpty(stageObjective) ? null : $"단계 목표: {stageObjective}");
         Append(builder, stageKnowledge);
         Append(builder, string.IsNullOrEmpty(selection) ? null : $"사용자가 선택한 대상: {selection}");
+        // 사실 블록은 항상 마지막이다. 배경 → 단계 → 선택 → 사실 순으로 놓아야 모델이
+        // 이것을 "가장 구체적이고 최신인 정보"로 취급한다.
+        if (includeFacts) Append(builder, facts);
 
         return builder.ToString();
     }

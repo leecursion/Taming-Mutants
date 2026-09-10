@@ -48,6 +48,7 @@ public class AICoScientistClient : AIChatBackend
         public string sessionId;
         public string userMessage;
         public string context;      // 현재 퀘스트/단계/선택된 잔기 등을 한 덩어리 문자열로
+        public string facts;        // 화면에서 확인 가능한 수치 — 서버에서 별도 system 메시지로 분리된다
         public string questId;
         public string stage;
     }
@@ -82,7 +83,10 @@ public class AICoScientistClient : AIChatBackend
         {
             sessionId = _sessionId,
             userMessage = userMessage,
-            context = context != null ? context.Compose() : string.Empty,
+            // 사실은 아래 facts로 따로 보내므로 이 덩어리에서는 뺀다 — 두 번 실으면
+            // 요청마다 같은 내용이 중복돼 토큰만 쓴다.
+            context = context != null ? context.Compose(includeFacts: false) : string.Empty,
+            facts = context != null ? context.facts : string.Empty,
             questId = context != null ? context.questId : string.Empty,
             stage = context != null ? context.stage : string.Empty,
         };

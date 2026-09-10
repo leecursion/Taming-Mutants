@@ -24,6 +24,9 @@ public class MouseWorldSelector : MonoBehaviour
     [Header("UI (선택된 원자 정보 표시용)")]
     public bool logToConsole = true;
 
+    // 사실 앵커링용 기록처. 클릭마다 FindFirstObjectByType이 돌지 않게 Awake에서 한 번만 잡는다.
+    private StructureFactProvider _factProvider;
+
     private void Awake()
     {
         if (targetCamera == null) targetCamera = Camera.main;
@@ -32,6 +35,8 @@ public class MouseWorldSelector : MonoBehaviour
         if (mutationHighlighter == null)
             mutationHighlighter = MutationHighlighter.EnsureFor(
                 FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include));
+
+        _factProvider = StructureFactProvider.Ensure();
     }
 
     private void Update()
@@ -56,6 +61,14 @@ public class MouseWorldSelector : MonoBehaviour
         {
             Debug.Log($"[MouseWorldSelector] 선택됨: {atomInfo.GetDisplayLabel()}");
         }
+
+        // 사실 앵커링용 — 지금 무엇을 보고 있는지 LLM 컨텍스트에 넣기 위해 기록한다.
+        //
+        // 아래 SelectResidue보다 먼저, 그리고 그것과 무관하게 부른다. SelectResidue는
+        // mutationSites에 등록된 변이 잔기가 아니면 조용히 반환하므로, 그 뒤에 기록하면
+        // 일반 잔기를 클릭했을 때 아무것도 남지 않는다. 사실 앵커링은 변이 잔기가 아닌
+        // 곳도 다뤄야 한다 — 학습자는 아무 원자나 찍고 "이건 뭐예요?"라고 묻는다.
+        if (_factProvider != null) _factProvider.RecordSelection(atomInfo);
 
         if (mutationHighlighter != null)
         {

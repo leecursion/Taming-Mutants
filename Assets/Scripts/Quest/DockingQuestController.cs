@@ -161,12 +161,37 @@ public class DockingQuestController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// 표적 잔기의 원자들 중 공유결합 대상으로 삼을 하나를 고른다.
+    /// 이름 일치 → 원소 S → CA → 첫 번째 원자 순으로 내려간다.
+    ///
+    /// static으로 빼 둔 이유: <see cref="StructureFactProvider"/>가 "표적까지 거리"를 계산할 때
+    /// 정확히 같은 원자를 집어야 한다. 규칙을 두 벌로 복제하면 화면의 도킹 연출이 향하는 지점과
+    /// 비서가 말하는 거리의 기준이 조용히 어긋난다 — 수치가 틀렸다는 걸 알아채기도 어렵다.
+    /// </summary>
+    public static AtomInfo PickTargetAtom(IReadOnlyList<AtomInfo> residueAtoms, string preferredAtomName)
+    {
+        if (residueAtoms == null || residueAtoms.Count == 0) return null;
+
+        AtomInfo byName = null, byElement = null, byCA = null;
+
+        foreach (var atom in residueAtoms)
+        {
+            if (atom == null) continue;
+            if (!string.IsNullOrEmpty(preferredAtomName) && atom.AtomName == preferredAtomName) byName = atom;
+            if (atom.Element == "S" && byElement == null) byElement = atom;
+            if (atom.AtomName == "CA") byCA = atom;
+        }
+
+        return byName != null ? byName : (byElement != null ? byElement : (byCA != null ? byCA : residueAtoms[0]));
+    }
+
     // 씬에 생성된 원자들 중 포켓 잔기/타깃 황 원자를 찾아둔다.
     private void IndexPocketAtoms()
     {
         _pocketAtoms.Clear();
         _targetSulfur = null;
-        AtomInfo byName = null, byElement = null, targetCA = null;
+        var targetResidueAtoms = new List<AtomInfo>();
 
         foreach (var atom in proteinLoader.GetComponentsInChildren<AtomInfo>(true))
         {
@@ -174,14 +199,10 @@ public class DockingQuestController : MonoBehaviour
                 _pocketAtoms.Add(atom);
 
             if (atom.ResidueId == targetResidueId)
-            {
-                if (atom.AtomName == targetAtomName) byName = atom;
-                if (atom.Element == "S" && byElement == null) byElement = atom;
-                if (atom.AtomName == "CA") targetCA = atom;
-            }
+                targetResidueAtoms.Add(atom);
         }
 
-        _targetSulfur = byName != null ? byName : (byElement != null ? byElement : targetCA);
+        _targetSulfur = PickTargetAtom(targetResidueAtoms, targetAtomName);
         _indexed = true;
 
         if (_pocketAtoms.Count == 0)

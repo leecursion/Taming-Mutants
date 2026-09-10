@@ -55,6 +55,26 @@ public class ProteinLoader : MonoBehaviour
     private readonly List<int> _spawnedAtomResIds = new List<int>();
     // 결합의 양 끝 원자 인덱스(_spawnedAtoms 기준) — 결합 표시는 원자 표시 상태를 그대로 따른다
     private readonly List<Vector2Int> _spawnedBondAtomIndices = new List<Vector2Int>();
+    // 잔기 번호 -> 그 잔기에 속한 원자들. 사실 조회(StructureFactProvider)용 인덱스.
+    // 원자가 최대 2,277개라 "12번 잔기의 원자"를 물을 때마다 전체를 훑으면 질문 한 번에
+    // 수천 번 비교가 돈다. 생성 루프에서 어차피 AtomInfo를 잡으므로 그 자리에서 함께 담는다.
+    private readonly Dictionary<int, List<AtomInfo>> _atomsByResidue = new Dictionary<int, List<AtomInfo>>();
+
+    // 잔기에 원자가 하나도 없을 때 돌려줄 빈 목록. null 대신 이걸 돌려줘 호출부에
+    // null 검사가 늘지 않게 한다. 매번 새로 만들면 질문마다 쓰레기가 쌓이므로 하나만 공유한다.
+    private static readonly AtomInfo[] EmptyAtoms = new AtomInfo[0];
+
+    /// <summary>구조가 로드되어 원자가 존재하는지.</summary>
+    public bool HasStructure => _spawnedAtoms.Count > 0;
+
+    /// <summary>현재 표시 중인 구조의 원자 수. 레이어 필터로 걸러진 뒤의 실제 생성 개수다.</summary>
+    public int AtomCount => _spawnedAtoms.Count;
+
+    /// <summary>지정한 잔기에 속한 원자 목록. 없으면 빈 목록(null 아님).</summary>
+    public IReadOnlyList<AtomInfo> AtomsOfResidue(int residueId)
+    {
+        return _atomsByResidue.TryGetValue(residueId, out var list) ? (IReadOnlyList<AtomInfo>)list : EmptyAtoms;
+    }
 
     [Serializable]
     public class AtomRecord
@@ -162,7 +182,14 @@ public class ProteinLoader : MonoBehaviour
             if (colorizer != null) colorizer.ApplyConfidence(atom.bfactor);
 
             var info = go.GetComponent<AtomInfo>();
-            if (info != null) info.Set(atom.name, atom.element, atom.res_name, atom.res_id, atom.bfactor);
+            if (info != null)
+            {
+                info.Set(atom.name, atom.element, atom.res_name, atom.res_id, atom.bfactor);
+
+                if (!_atomsByResidue.TryGetValue(atom.res_id, out var residueAtoms))
+                    _atomsByResidue[atom.res_id] = residueAtoms = new List<AtomInfo>();
+                residueAtoms.Add(info);
+            }
 
             _spawnedAtoms.Add(go);
             _spawnedAtomResIds.Add(atom.res_id);
@@ -301,6 +328,9 @@ public class ProteinLoader : MonoBehaviour
         _spawnedBonds.Clear();
         _spawnedAtomResIds.Clear();
         _spawnedBondAtomIndices.Clear();
+        // 퀘스트를 전환하면 구조가 통째로 바뀐다. 여기를 비우지 않으면 파괴된 이전 구조의
+        // 원자가 그대로 조회돼, 비서가 지금 화면에 없는 잔기의 수치를 사실이라고 말한다.
+        _atomsByResidue.Clear();
     }
 
     // 리본/Helix 표시 레벨(StructureLevelController)에서 아미노산 단계로 넘어갈 때만
