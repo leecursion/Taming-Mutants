@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Globalization;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -336,7 +337,10 @@ public class OpenAiTtsClient : TextToSpeechBackend
         builder.Append(",\"input\":").Append(Quote(text));
         // wav로 받아야 WavCodec이 그대로 읽는다. mp3는 플랫폼별 디코딩 지원이 갈린다.
         builder.Append(",\"response_format\":\"wav\"");
-        if (!Mathf.Approximately(speed, 1f)) builder.Append(",\"speed\":").Append(speed.ToString("0.00"));
+        // 소수점을 쉼표로 쓰는 지역(독일·프랑스 등)에서 현재 문화권 서식을 쓰면 "0,95"가 되어
+        // JSON이 통째로 깨진다. 서버는 그 요청을 파싱하지 못해 음성이 매번 실패한다.
+        if (!Mathf.Approximately(speed, 1f))
+            builder.Append(",\"speed\":").Append(speed.ToString("0.00", CultureInfo.InvariantCulture));
 
         // 말투 지시. 구형 모델(tts-1 등)은 이 항목을 모르고 400으로 거절하므로,
         // 비워두면 아예 넣지 않는다.

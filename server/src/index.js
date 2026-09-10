@@ -132,9 +132,23 @@ export default {
   },
 };
 
+/**
+ * 요청 본문을 읽되, 깨진 본문을 서버 잘못으로 만들지 않는다.
+ *
+ * 전송이 중간에 끊기면 파싱에서 예외가 난다. 게임이 화면을 넘기며 진행 중이던 요청을
+ * 버릴 때 실제로 일어나는 일이다. 그대로 두면 라우터가 500 "서버 내부 오류"로 감싸서,
+ * 로그를 보는 쪽에서는 서버가 고장 난 것처럼 보이고 원인을 엉뚱한 곳에서 찾게 된다.
+ * 본문이 깨진 것은 요청 쪽 사정이므로 400으로 돌려준다.
+ */
+async function readJsonBody(request) {
+  try { return await request.json(); }
+  catch { return null; }
+}
+
 /** F-06 AI Co-Scientist — Upstage Solar 중계. */
 async function handleChat(request, env) {
-  const body = await request.json();
+  const body = await readJsonBody(request);
+  if (!body) return json({ error: "요청 본문을 읽지 못했습니다." }, 400);
 
   const userMessage = clip(body.userMessage, MAX_USER_MESSAGE);
   if (!userMessage) return json({ error: "userMessage가 비어 있습니다." }, 400);
@@ -187,9 +201,8 @@ async function handleChat(request, env) {
 
 /** 채점 불가와 이해 확인을 구분한다. 둘 다 게임 진행을 막지는 않는다. */
 async function handleOralCheck(request, env) {
-  let body;
-  try { body = await request.json(); }
-  catch { return json({ error: "JSON 형식이 올바르지 않습니다." }, 400); }
+  const body = await readJsonBody(request);
+  if (!body) return json({ error: "요청 본문을 읽지 못했습니다." }, 400);
   const answer = clip(body?.answer, MAX_ANSWER);
   const criteria = clip(body?.criteria, MAX_CRITERIA);
   if (!answer || !criteria) return json({ error: "answer와 criteria가 필요합니다." }, 400);
@@ -272,7 +285,9 @@ async function handleOralCheck(request, env) {
 
 /** 음성 인식 — 받은 wav를 Whisper로 중계한다. */
 async function handleStt(request, env) {
-  const incoming = await request.formData();
+  let incoming;
+  try { incoming = await request.formData(); }
+  catch { return json({ error: "요청 본문을 읽지 못했습니다." }, 400); }
   const file = incoming.get("file");
 
   if (!file || typeof file === "string") {
@@ -307,7 +322,8 @@ async function handleStt(request, env) {
 
 /** 음성 합성 — 문장을 받아 wav 바이트를 그대로 흘려보낸다. */
 async function handleTts(request, env) {
-  const body = await request.json();
+  const body = await readJsonBody(request);
+  if (!body) return json({ error: "요청 본문을 읽지 못했습니다." }, 400);
 
   const input = clip(body.input, MAX_TTS_INPUT);
   if (!input) return json({ error: "input이 비어 있습니다." }, 400);

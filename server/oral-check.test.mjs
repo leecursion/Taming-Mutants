@@ -116,6 +116,24 @@ test("a stalled upstream is retried once, then given up on", async () => {
   assert.equal(calls, 2);
   assert.deepEqual(givenUp, unavailable);
 });
+test("a truncated request body is the caller's error, never a 500", async () => {
+  // 게임이 화면을 넘기며 진행 중이던 요청을 버리면 본문이 끊긴 채 도착한다.
+  // 500으로 답하면 로그를 보는 쪽이 서버 고장으로 오해해 원인을 엉뚱한 곳에서 찾는다.
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; return response("{}"); };
+  try {
+    for (const path of ["/api/oral-check", "/api/tts", "/api/co-scientist", "/api/stt"]) {
+      const res = await worker.fetch(new Request("https://example.test" + path, {
+        method: "POST",
+        headers: { "X-App-Token": "test-token", "Content-Type": "application/json" },
+        body: '{"input":"끊긴 본문',
+      }), env);
+      assert.equal(res.status, 400, path);
+    }
+    assert.equal(calls, 0);
+  } finally { globalThis.fetch = original; }
+});
 test("malformed output and upstream failures are ungraded, never mastery", async () => {
   for (const content of ["oops", "{}", "null", '{"understood":"false","missingConcept":"","followUp":"","evidence":""}',
     '{"understood":false}', '{"understood":false,"missingConcept":null,"followUp":"","evidence":""}'])
