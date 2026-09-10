@@ -96,6 +96,26 @@ test("input caps, model, and prompt separation are enforced", async () => {
   assert.equal(student.answer.length, 1000);
   assert.equal(student.previousAnswer.length, 2000);
 });
+test("a stalled upstream is retried once, then given up on", async () => {
+  // 상류가 이따금 멈춘다. 한 번의 지연으로 채점을 포기하면 제대로 설명한 학습자가
+  // 이유도 모른 채 확인 없이 넘어간다.
+  const stall = () => { const e = new Error("stalled"); e.name = "TimeoutError"; throw e; };
+  let calls = 0;
+  const recovered = await (await invoke(payload, () => {
+    calls++;
+    if (calls === 1) stall();
+    return response(JSON.stringify(valid));
+  })).json();
+  assert.equal(calls, 2);
+  assert.deepEqual(recovered, { ...valid, evaluated: true });
+
+  // 두 번 다 멈추면 상류 문제다. 더 붙잡지 않고 확인 불가로 돌린다 —
+  // 붙잡을수록 클라이언트의 30초 한도를 넘겨 화면이 멈춘 것처럼 보인다.
+  calls = 0;
+  const givenUp = await (await invoke(payload, () => { calls++; stall(); })).json();
+  assert.equal(calls, 2);
+  assert.deepEqual(givenUp, unavailable);
+});
 test("malformed output and upstream failures are ungraded, never mastery", async () => {
   for (const content of ["oops", "{}", "null", '{"understood":"false","missingConcept":"","followUp":"","evidence":""}',
     '{"understood":false}', '{"understood":false,"missingConcept":null,"followUp":"","evidence":""}'])

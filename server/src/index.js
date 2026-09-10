@@ -84,9 +84,14 @@ const MAX_AUDIO_BYTES = 8 * 1024 * 1024;
 // 여기서 먼저 끊고 오류를 돌려주면 클라이언트가 곧바로 대본 대사로 넘어갈 수 있다.
 const UPSTREAM_TIMEOUT_MS = 20000;
 
-async function fetchUpstream(url, init) {
+const UPSTAGE_CHAT_URL = "https://api.upstage.ai/v1/chat/completions";
+// 채점 한 번의 상류 지연 한도. 평소 1~2초에 끝나므로 12초는 이미 "멈췄다"는 신호다.
+// 두 번 시도해도 24초라 클라이언트가 포기하는 30초(OralCheckClient.timeoutSeconds) 안에 든다.
+const GRADER_TIMEOUT_MS = 12000;
+
+async function fetchUpstream(url, init, timeoutMs = UPSTREAM_TIMEOUT_MS) {
   try {
-    return await fetch(url, { ...init, signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS) });
+    return await fetch(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
   } catch (e) {
     if (e.name === "TimeoutError" || e.name === "AbortError") return null;
     throw e;
@@ -151,7 +156,7 @@ async function handleChat(request, env) {
 
   messages.push({ role: "user", content: userMessage });
 
-  const upstream = await fetchUpstream("https://api.upstage.ai/v1/chat/completions", {
+  const upstream = await fetchUpstream(UPSTAGE_CHAT_URL, {
     method: "POST",
     headers: {
       "Authorization": `Bearer ${env.UPSTAGE_API_KEY}`,
@@ -192,22 +197,30 @@ async function handleOralCheck(request, env) {
   const conceptKeys = [...new Set((Array.isArray(body?.conceptKeys) ? body.conceptKeys : [])
     .filter(key => typeof key === "string" && /^[a-z][a-z0-9_]{0,39}$/.test(key)))].slice(0, 16);
   const unavailable = { understood: true, missingConcept: "", followUp: "", evaluated: false, evidence: "" };
+  const graderRequest = {
+    method: "POST",
+    headers: {
+      "Authorization": "Bearer " + env.UPSTAGE_API_KEY,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: CHAT_MODEL, max_tokens: 400, stream: false,
+      messages: [
+        { role: "system", content: GRADER_PROMPT },
+        { role: "system", content: "채점 기준:\n" + criteria + "\nconceptKeys: " + JSON.stringify(conceptKeys) },
+        { role: "user", content: JSON.stringify({ answer, previousAnswer }) },
+      ],
+    }),
+  };
   try {
-    const upstream = await fetchUpstream("https://api.upstage.ai/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        "Authorization": "Bearer " + env.UPSTAGE_API_KEY,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: CHAT_MODEL, max_tokens: 400, stream: false,
-        messages: [
-          { role: "system", content: GRADER_PROMPT },
-          { role: "system", content: "채점 기준:\n" + criteria + "\nconceptKeys: " + JSON.stringify(conceptKeys) },
-          { role: "user", content: JSON.stringify({ answer, previousAnswer }) },
-        ],
-      }),
-    });
+    // 상류가 이따금 멈춘다. 채점은 사건 끝의 한 번뿐이라 그때 포기하면 제대로 설명한
+    // 학습자가 확인을 못 받고 넘어간다 — 화면에는 아무 이유도 남지 않는다.
+    // 재시도는 한 번뿐이다. 두 번 다 멈추면 상류가 앓는 중이므로 더 붙잡지 않는다.
+    let upstream = await fetchUpstream(UPSTAGE_CHAT_URL, graderRequest, GRADER_TIMEOUT_MS);
+    if (!upstream) {
+      console.error("oral-check 상류 지연 — 한 번 더 시도합니다");
+      upstream = await fetchUpstream(UPSTAGE_CHAT_URL, graderRequest, GRADER_TIMEOUT_MS);
+    }
     if (!upstream || !upstream.ok) {
       console.error("oral-check 상류 실패", upstream ? upstream.status : "timeout",
                     upstream ? clip(await upstream.text(), 300) : "");
