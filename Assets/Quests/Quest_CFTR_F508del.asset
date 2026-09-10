@@ -163,8 +163,8 @@ MonoBehaviour:
       \uB0AE\uC544\uC9C0\uBA70 \uC12C\uBAA8 \uC6B4\uB3D9(mucociliary clearance)\uC774
       \uD68C\uBCF5\uB41C\uB2E4."
   candidates:
-  - displayName: "Corrector Pair \u2014 Elexacaftor + Tezacaftor-like"
-    subtitle: "\uC0C1\uBCF4\uC801 Corrector \uC870\uD569"
+  - displayName: "\uc811\uae30 \ub3c4\uc6b0\ubbf8 2\uc885"
+    subtitle: "\uc11c\ub85c \ub2e4\ub978 \ubd80\uc704\uc5d0 \uc791\uc6a9"
     features: "\uC0C1\uBCF4\uC801\uC778 corrector \uC791\uC6A9\uC73C\uB85C F508del
       CFTR\uC758 folding/domain assembly\uC640 \uC138\uD3EC\uB9C9 \uB3C4\uB2EC\uB7C9\uC744
       \uAC1C\uC120"
@@ -174,8 +174,8 @@ MonoBehaviour:
       CFTR\uC758 \uC811\uD798\uACFC \uB3C4\uBA54\uC778 \uC870\uB9BD\uC774 \uC88B\uC544\uC9C0\uACE0,
       \uC138\uD3EC\uB9C9\uAE4C\uC9C0 \uB3C4\uB2EC\uD558\uB294 \uC591\uC774 \uB298\uC5C8\uC5B4\uC694.
       Surface CFTR \u2191"
-  - displayName: Ivacaftor-like
-    subtitle: Potentiator
+  - displayName: "\ucc44\ub110 \uc870\uc808 \ud6c4\ubcf4"
+    subtitle: "\ub9c9\uc5d0 \uc788\ub294 \ucc44\ub110\uc5d0 \uc791\uc6a9"
     features: "\uC138\uD3EC\uB9C9\uC5D0 \uB3C4\uB2EC\uD55C CFTR\uC758 channel opening\uC744
       \uC99D\uAC00\uC2DC\uD0B4"
     isCorrect: 1
@@ -183,8 +183,8 @@ MonoBehaviour:
     resultMessage: "\uC131\uACF5! \uB9C9\uC5D0 \uC790\uB9AC \uC7A1\uC740 CFTR\uC758
       \uBB38(gate)\uC774 \uC5F4\uB9AC\uBA74\uC11C Cl\u207B \uC774\uC628\uC774 \uD750\uB974\uAE30
       \uC2DC\uC791\uD588\uC5B4\uC694. Channel activity \u2191"
-  - displayName: Lumacaftor-like
-    subtitle: "\uCD08\uAE30 \uC138\uB300 Corrector"
+  - displayName: "\uc811\uae30 \ub3c4\uc6b0\ubbf8 1\uc885"
+    subtitle: "\uc811\ud798\uacfc \uc774\ub3d9\uc744 \ubcf4\uc870"
     features: "F508del CFTR\uC744 rescue\uD558\uB294 corrector \uACC4\uC5F4\uC774\uC9C0\uB9CC
       \uCD5C\uC2E0 \uC870\uD569 \uB300\uBE44 \uC81C\uD55C\uC801\uC778 \uD68C\uBCF5\uB9CC
       \uBCF4\uC5EC\uC90C"
@@ -193,8 +193,8 @@ MonoBehaviour:
     resultMessage: "\uAD6C\uC870 \uD754\uB4E4\uB9BC\uC774 \uC870\uAE08 \uC904\uC5C8\uC5B4\uC694
       \u2014 Surface CFTR: LOW \u2192 PARTIAL. \uB2E4\uC74C \uB2E8\uACC4\uC5D4 \uB354
       \uD6A8\uACFC\uC801\uC778 corrector \uC870\uD569\uC774 \uD544\uC694\uD574\uC694."
-  - displayName: Proteasome Inhibitor-like
-    subtitle: "\uACBD\uB85C \uCC28\uB2E8"
+  - displayName: "\ubd84\ud574 \uc870\uc808 \ud6c4\ubcf4"
+    subtitle: "\ub2e8\ubc31\uc9c8 \ubd84\ud574 \uacbd\ub85c\uc5d0 \uc791\uc6a9"
     features: "misfolded protein\uC758 \uBD84\uD574 \uC790\uCCB4\uB97C \uB9C9\uC73C\uB824\uB294
       \uC811\uADFC"
     isCorrect: 0
@@ -202,8 +202,8 @@ MonoBehaviour:
     resultMessage: "\uBD84\uD574 \uC2E0\uD638\uB294 \uC904\uC5C8\uC9C0\uB9CC \uBD88\uC548\uC815\uD55C
       CFTR \uC0C1\uD0DC\uB294 \uADF8\uB300\uB85C\uC608\uC694. ER stress \uACBD\uACE0\uAC00
       \uB5B4\uC5B4\uC694. Blocking disposal does not correct folding."
-  - displayName: KRAS G12C Inhibitor-like
-    subtitle: "\uD45C\uC801 \uBD88\uC77C\uCE58"
+  - displayName: "KRAS \ud45c\uc801 \ud6c4\ubcf4"
+    subtitle: "\ubc18\uc751\uae30 \uc788\uc74c \u00b7 KRAS \ud45c\uc801"
     features: "\uC0AC\uAC74 1(KRAS)\uC5D0\uC11C \uC0AC\uC6A9\uD55C mutant KRAS \uD45C\uC801
       \uC800\uD574\uC81C \uACC4\uC5F4"
     isCorrect: 0

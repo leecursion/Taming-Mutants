@@ -21,6 +21,12 @@ public class CftrFinaleController : MonoBehaviour
     public CftrHUD hud;
     [Tooltip("이 화합물 id의 도킹이 Success일 때만 마무리 연출을 시작한다 (potentiator)")]
     public string finaleCompoundId = "ivacaftor_like";
+    [Tooltip("만들어 둔 상피세포 장면을 원자 단계에서만 보이게 하려고 구독한다. 비우면 씬에서 자동 탐색.")]
+    public StructureLevelController levelController;
+    [Tooltip("다른 사건으로 넘어갈 때 이 연출을 치우려고 구독한다. 비우면 씬에서 자동 탐색.")]
+    public DockingQuestCatalog questCatalog;
+    [Tooltip("이 연출이 속한 퀘스트 id. 다른 사건이 시작되면 만들어 둔 장면을 지운다.")]
+    public string activeForQuestId = "cftr_f508del";
 
     [Header("타이밍(초)")]
     public float holdAfterDockingSeconds = 1.5f;
@@ -53,6 +59,10 @@ public class CftrFinaleController : MonoBehaviour
         if (dockingController == null) dockingController = FindFirstObjectByType<DockingQuestController>(FindObjectsInactive.Include);
         if (proteinLoader == null) proteinLoader = FindFirstObjectByType<ProteinLoader>(FindObjectsInactive.Include);
         if (hud == null) hud = FindFirstObjectByType<CftrHUD>(FindObjectsInactive.Include);
+        if (levelController == null && proteinLoader != null)
+            levelController = proteinLoader.GetComponent<StructureLevelController>();
+        if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
+        if (questCatalog == null) questCatalog = FindFirstObjectByType<DockingQuestCatalog>(FindObjectsInactive.Include);
 
         BuildFadeOverlay();
     }
@@ -60,11 +70,43 @@ public class CftrFinaleController : MonoBehaviour
     private void OnEnable()
     {
         if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (levelController != null) levelController.OnLevelChanged += HandleLevelChanged;
+        if (questCatalog != null) questCatalog.OnQuestStarted += HandleQuestStarted;
     }
 
     private void OnDisable()
     {
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
+        if (questCatalog != null) questCatalog.OnQuestStarted -= HandleQuestStarted;
+    }
+
+    /// <summary>
+    /// 상피세포 장면은 단백질 앵커 옆에 세운 별개 오브젝트라, 원자를 끄는 레벨 전환이 함께
+    /// 끄지 못한다. 마무리 연출을 본 뒤 '이전'을 누르면 나선/리본 화면에 판때기와 섬모만 남는다.
+    /// </summary>
+    private void HandleLevelChanged(StructureLevelController.ViewLevel level)
+    {
+        if (_sceneRoot == null) return;
+        _sceneRoot.SetActive(level == StructureLevelController.ViewLevel.AminoAcid);
+    }
+
+    /// <summary>다른 사건으로 넘어가면 이 사건의 마무리 장면은 치운다. 같은 사건을 다시 고르면
+    /// 연출도 처음부터 다시 볼 수 있어야 하므로 재생 여부도 함께 되돌린다.</summary>
+    private void HandleQuestStarted(DockingQuestDefinition def)
+    {
+        // StopAllCoroutines는 finally를 실행하지 않는다 — 플래그는 직접 되돌린다.
+        StopAllCoroutines();
+        IsFinalePlaying = false;
+        _ciliaSwayRoutine = null;
+        if (_fadeOverlay != null) _fadeOverlay.alpha = 0f;
+
+        if (_sceneRoot != null) Destroy(_sceneRoot);
+        _sceneRoot = null;
+        _aslLayer = _mucusLayer = null;
+        _cilia.Clear();
+
+        _finalePlayed = def == null || def.id != activeForQuestId;
     }
 
     private void HandleDockingFinished(DockingResult result)
@@ -74,7 +116,9 @@ public class CftrFinaleController : MonoBehaviour
         if (result.Compound == null || result.Compound.id != finaleCompoundId) return;
 
         _finalePlayed = true;
-        StartCoroutine(TrackedFinaleRoutine());
+        if (dockingController != null && dockingController.selectionPanel != null)
+            dockingController.selectionPanel.Experiment.OfferVerification("채널 기능 검증", () => StartCoroutine(TrackedFinaleRoutine()));
+        else StartCoroutine(TrackedFinaleRoutine());
     }
 
     // 비서 대사 큐에는 없는 시각 연출도 끝난 뒤 질문할 수 있게 알린다.
@@ -101,6 +145,9 @@ public class CftrFinaleController : MonoBehaviour
             hud.ShowMessage("교정제와 채널을 여는 약을 함께 쓰면 CFTR이 제자리를 찾고, 채널도 열리고, 점액도 다시 잘 빠져나가요.");
 
         yield return new WaitForSeconds(sceneHoldSeconds);
+        if (dockingController != null && dockingController.selectionPanel != null)
+            dockingController.selectionPanel.Experiment.FinishVerification("막 배치 → 채널 개방 → Cl⁻ 흐름 / 점액 배출 개선");
+        if (dockingController != null) dockingController.CompleteVerification();
     }
 
     // --- 상피세포 표면 장면 ---
@@ -111,6 +158,7 @@ public class CftrFinaleController : MonoBehaviour
         Transform anchor = proteinLoader != null ? proteinLoader.transform : transform;
 
         _sceneRoot = new GameObject("CftrEpitheliumScene");
+        AminoAcidOnlyVisual.Mark(_sceneRoot, levelController);
         _sceneRoot.transform.SetParent(anchor.parent != null ? anchor.parent : anchor, false);
         _sceneRoot.transform.position = anchor.position + anchor.forward * 1.6f;
         _sceneRoot.transform.rotation = Quaternion.LookRotation(anchor.forward, Vector3.up);

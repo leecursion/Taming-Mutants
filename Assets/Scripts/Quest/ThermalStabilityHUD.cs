@@ -12,6 +12,8 @@ using UnityEngine.UI;
 /// </summary>
 public class ThermalStabilityHUD : MonoBehaviour
 {
+    public RectTransform LayoutRect { get; private set; }
+
     [Header("표시")]
     public Vector2 cornerMargin = new Vector2(28f, 28f);
     public float panelWidth = 380f;
@@ -132,6 +134,7 @@ public class ThermalStabilityHUD : MonoBehaviour
         var rootGo = new GameObject("ThermalHud", typeof(RectTransform));
         rootGo.transform.SetParent(canvasGo.transform, false);
         var rootRect = (RectTransform)rootGo.transform;
+        LayoutRect = rootRect;
         rootRect.anchorMin = rootRect.anchorMax = new Vector2(0f, 1f); // 좌상단
         rootRect.pivot = new Vector2(0f, 1f);
         rootRect.anchoredPosition = new Vector2(cornerMargin.x, -cornerMargin.y);
@@ -268,6 +271,7 @@ public class ThermalStabilityHUD : MonoBehaviour
         image.type = Image.Type.Sliced;
         image.color = color;
         image.raycastTarget = false;
+        go.AddComponent<LayoutElement>().ignoreLayout = true;
         return image;
     }
 

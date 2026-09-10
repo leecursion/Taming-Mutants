@@ -176,39 +176,38 @@ MonoBehaviour:
       \uC548\uC815\uD654\uC81C \uBD84\uC790\uB294 DNA \uACB0\uD569 \uC7A5\uBA74\uC5D0
       \uB4F1\uC7A5\uC2DC\uD0A4\uC9C0 \uC54A\uB294\uB2E4."
   candidates:
-  - displayName: PhiKan083-like Weak Fragment
-    subtitle: "\uBD80\uBD84 \uC815\uB2F5 \u2014 \uCD08\uAE30 Fragment Hit (2VUK \uC2E4\uC81C
-      \uC88C\uD45C)"
+  - displayName: "\uc791\uc740 \uace8\uaca9 \ud6c4\ubcf4"
+    subtitle: "\uc9e7\uc740 \uc811\ucd09 \uba74\uc801"
     features: "Y220C mutation-induced pocket\uC5D0 \uB4E4\uC5B4\uAC00\uC9C0\uB9CC
       \uC548\uC815\uD654 \uD6A8\uACFC\uAC00 \uC81C\uD55C\uC801\uC778 \uCD08\uAE30
       fragment"
     isCorrect: 0
     affinityKcalPerMol: -3.1
     resultMessage: Useful fragment hit, but stabilization is insufficient.
-  - displayName: Rezatapopt-like Stabilizer
-    subtitle: "\uC815\uB2F5 \u2014 Optimized Stabilizer (9S9O \uC2E4\uC81C \uC88C\uD45C)"
+  - displayName: "\ud655\uc7a5 \uace8\uaca9 \ud6c4\ubcf4"
+    subtitle: "\uc5ec\ub7ec \uc811\ucd09 \ubd80\uc704"
     features: "Y220C pocket\uC5D0 \uCD5C\uC801\uD654\uB41C mutant-selective stabilizer"
     isCorrect: 1
     affinityKcalPerMol: -9.2
     resultMessage: Mutant-selective stabilization.
-  - displayName: Nutlin-like MDM2 Inhibitor
-    subtitle: "\uC624\uB2F5 1 \u2014 \uB2E4\uB978 p53 \uC804\uB7B5"
+  - displayName: "MDM2 \uc870\uc808 \ud6c4\ubcf4"
+    subtitle: "p53 \uc591 \uc870\uc808 \uacbd\ub85c\uc5d0 \uc791\uc6a9"
     features: "p53-MDM2 \uC0C1\uD638\uC791\uC6A9\uC744 \uCC28\uB2E8\uD574 p53 \uBD84\uD574\uB97C
       \uC5B5\uC81C\uD558\uB824\uB294 \uC804\uB7B5. Y220C\uC758 \uAD6C\uC870\uC801
       \uBD88\uC548\uC815\uC131 \uC790\uCCB4\uB294 \uAD50\uC815\uD558\uC9C0 \uC54A\uC74C"
     isCorrect: 0
     affinityKcalPerMol: 2.5
     resultMessage: More mutant p53 is not the same as functional p53.
-  - displayName: Generic Cys-reactive Warhead
-    subtitle: "\uC624\uB2F5 2 \u2014 Covalency\uB9CC \uC758\uC874"
+  - displayName: "\ubc18\uc751\uae30 \ud6c4\ubcf4"
+    subtitle: "\uc2dc\uc2a4\ud14c\uc778 \ubc18\uc751\uae30 \uc788\uc74c"
     features: "Cys220\uACFC \uBC18\uC751\uD560 \uAC00\uB2A5\uC131\uB9CC \uB178\uB9AC\uB294
       \uAC00\uC0C1\uC758 electrophilic compound. \uD3EC\uCF13 \uC801\uD569\uC131\uACFC
       \uC548\uC815\uD654 \uC0C1\uD638\uC791\uC6A9\uC740 \uBD80\uC871"
     isCorrect: 0
     affinityKcalPerMol: 0.8
     resultMessage: Covalency alone does not guarantee conformational rescue.
-  - displayName: Non-selective Surface Binder
-    subtitle: "\uC624\uB2F5 3 \u2014 \uC120\uD0DD\uC131 \uACB0\uC5EC"
+  - displayName: "\ub2e4\uc911 \uc811\ucd09 \ud6c4\ubcf4"
+    subtitle: "\uc5ec\ub7ec \ud45c\uba74\uacfc \uc811\ucd09"
     features: "\uBCC0\uC774 \uD3EC\uCF13\uC5D0 \uD2B9\uC774\uC801\uC774\uC9C0 \uC54A\uACE0
       \uC5EC\uB7EC \uB2E8\uBC31\uC9C8 \uD45C\uBA74\uC5D0 \uBE44\uC120\uD0DD\uC801\uC73C\uB85C
       \uACB0\uD569\uD558\uB294 \uAC00\uC0C1 \uD6C4\uBCF4"

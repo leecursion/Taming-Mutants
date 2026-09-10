@@ -14,7 +14,10 @@ public enum DockingOutcome
     FragmentHit,     // 부분 정답: 포켓엔 들어가 안정화 효과가 잠깐 나타나지만, 곧 이탈한다
     WrongStrategy,   // 오답: 이 포켓과 무관한 전략(예: MDM2 억제제) — 애초에 포켓에 결합하지 않는다
     NoStabilization, // 오답: 표적 원자 근처엔 도달하나(proximity) 안정화 상호작용은 형성하지 못한다
-    NonSelective     // 오답: 이 포켓 말고 주변에도 비특이적으로 들러붙는다
+    NonSelective,    // 오답: 이 포켓 말고 주변에도 비특이적으로 들러붙는다
+    PartialRecovery,
+    DegradationBlocked,
+    UnstableBinding
 }
 
 /// <summary>
@@ -37,6 +40,7 @@ public struct DockingResult
 
     /// <summary>화면에 실제로 표시된 문구. 비서가 말할 바닥선이 된다.</summary>
     public string Message;
+    public string Prediction;
 
     /// <summary>성공 판정인지. 순서 오류는 성공이 아니다.</summary>
     public bool IsSuccess => !IsOrderError && Outcome == DockingOutcome.Success;
@@ -64,6 +68,9 @@ public class CompoundData
     public string outcome;        // DockingOutcome 이름 문자열
     public float affinity;        // kcal/mol (음수일수록 강한 결합)
     public string result_message; // 도킹 시도 후 표시할 안내/경고 문구
+    public string observation;    // 실험 후 남길 짧은 관찰 기록
+    [Range(0f, 1f)] public float clash_depth; // 입구 0 → 포켓 중심 1
+    public bool forms_covalent_bond;
     public List<CompoundAtom> atoms;
     public List<CompoundBond> bonds;
 

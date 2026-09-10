@@ -135,6 +135,7 @@ public class StructureLevelBackButton : MonoBehaviour
         rootRect.pivot = new Vector2(1f, 0f);
         rootRect.anchoredPosition = new Vector2(-cornerMargin.x, cornerMargin.y);
         rootRect.sizeDelta = new Vector2(buttonSize.x, buttonSize.y + levelTextGap + levelTextHeight);
+        rootGo.AddComponent<ScreenSafePanel>();
 
         // 버튼 (루트 상단)
         var buttonGo = new GameObject("BackButton");

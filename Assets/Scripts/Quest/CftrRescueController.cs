@@ -64,7 +64,13 @@ public class CftrRescueController : MonoBehaviour
 
     private bool _isActiveQuest;
     private bool _introPending;
+    public bool IsStructureChanging { get; private set; }
     private bool _stageActive; // wobble/파티클이 매 프레임 갱신되는지
+    // 인트로가 끝나 원자 단계 연출을 재개할 준비가 됐는지. _stageActive는 여기에 더해
+    // "지금 원자 단계를 보고 있는가"까지 만족할 때만 켜진다 — 나선/리본으로 올라가면
+    // 꺼졌다가 다시 내려오면 켜진다.
+    private bool _stageReady;
+    private bool _atomLevelVisible;
     private float _instability01 = 1f;
 
     // --- wobble 인덱싱 ---
@@ -125,6 +131,8 @@ public class CftrRescueController : MonoBehaviour
 
     private void HandleQuestStarted(DockingQuestDefinition def)
     {
+        StopAllCoroutines();
+        IsStructureChanging = false;
         bool wasActive = _isActiveQuest;
         _isActiveQuest = def != null && def.id == activeForQuestId;
 
@@ -132,6 +140,7 @@ public class CftrRescueController : MonoBehaviour
         {
             _instability01 = 1f;
             _stageActive = false;
+            _stageReady = false;
             _introPending = true; // 다음 ProteinLoader.OnLoaded(8EJ1)에서 인트로 시퀀스를 재생한다
             if (hud != null)
             {
@@ -145,7 +154,9 @@ public class CftrRescueController : MonoBehaviour
         else if (wasActive)
         {
             _stageActive = false;
+            _stageReady = false;
             _introPending = false;
+            RestoreWobbleHomePositions();
             DestroyDna();
             if (hud != null) hud.gameObject.SetActive(false);
             if (_gateRoot != null) { Destroy(_gateRoot); _gateRoot = null; _clFlow = null; }
@@ -167,8 +178,43 @@ public class CftrRescueController : MonoBehaviour
     {
         if (!_isActiveQuest) return;
         bool aminoAcid = level == StructureLevelController.ViewLevel.AminoAcid;
+        _atomLevelVisible = aminoAcid;
         if (hud != null) hud.gameObject.SetActive(aminoAcid && !_introPending);
+        SetStageVisuals(aminoAcid);
         if (aminoAcid) ApplyIcl4Tint();
+    }
+
+    /// <summary>
+    /// 원자 단계에서만 의미가 있는 국소 연출(QC 입자, 게이트, Cl⁻ 흐름, 흔들림)을 한꺼번에
+    /// 켜고 끈다.
+    ///
+    /// 이것들은 모두 단백질 앵커의 자식이지만 원자·결합이 아니라서, 레벨 전환이 원자를 끌 때
+    /// 함께 꺼지지 않는다. 놓아두면 '이전'을 눌러 나선/리본으로 올라간 화면 한가운데에
+    /// 입자와 판때기만 떠 있는 잔해가 된다.
+    /// </summary>
+    private void SetStageVisuals(bool visible)
+    {
+        _stageActive = _stageReady && visible;
+
+        if (_qcParticles != null)
+        {
+            if (visible)
+            {
+                _qcParticles.gameObject.SetActive(true);
+                ApplyQcParticles();
+                _qcParticles.Play(true);
+            }
+            else
+            {
+                // 방출만 멈추면 이미 떠 있는 입자가 수명(2.4초)만큼 더 남는다 — 살아있는 것까지 지운다.
+                _qcParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                _qcParticles.gameObject.SetActive(false);
+            }
+        }
+
+        if (_gateRoot != null) _gateRoot.SetActive(visible); // Cl⁻ flow는 게이트의 자식이라 함께 따라간다
+
+        if (!visible) RestoreWobbleHomePositions();
     }
 
     // --- 인덱싱 / wobble / ICL4 하이라이트 ---
@@ -261,6 +307,17 @@ public class CftrRescueController : MonoBehaviour
         }
     }
 
+    /// <summary>흔들던 원자를 인덱싱 시점의 제자리로 되돌린다. 결합 실린더는 함께 흔들리지 않으므로,
+    /// 흔들린 자리에서 멈추면 다시 원자 단계로 내려왔을 때 결합에서 어긋난 채로 굳어 보인다.</summary>
+    private void RestoreWobbleHomePositions()
+    {
+        for (int i = 0; i < _wobbleTargets.Count && i < _wobbleHome.Count; i++)
+        {
+            Transform t = _wobbleTargets[i];
+            if (t != null) t.localPosition = _wobbleHome[i];
+        }
+    }
+
     private void SetInstability(float value)
     {
         _instability01 = Mathf.Clamp01(value);
@@ -276,6 +333,9 @@ public class CftrRescueController : MonoBehaviour
         var go = new GameObject("CftrQcParticles");
         go.transform.SetParent(proteinLoader.transform, false);
         go.transform.localPosition = _anchorLocalPos;
+        // 이 입자는 리본 단계에서 재생되는 인트로 끝에 생긴다 — 표식을 붙이는 그 자리에서
+        // 지금 단계에 맞춰 꺼두지 않으면 원자 단계에 닿기 전부터 리본 위를 떠다닌다.
+        AminoAcidOnlyVisual.Mark(go, levelController);
 
         _qcParticles = go.AddComponent<ParticleSystem>();
         var main = _qcParticles.main;
@@ -423,16 +483,24 @@ public class CftrRescueController : MonoBehaviour
 
     private IEnumerator SwapToStructureRoutine(string relativePath, float fadeDuration)
     {
+        IsStructureChanging = true;
         yield return proteinLoader.FadeOutRoutine(fadeDuration);
 
         bool loaded = false;
         void OnLoadedOnce(ProteinLoader.ProteinData d) { loaded = true; }
         proteinLoader.OnLoaded += OnLoadedOnce;
-        proteinLoader.LoadStructure(relativePath);
-        while (!loaded) yield return null;
-        proteinLoader.OnLoaded -= OnLoadedOnce;
-
-        yield return proteinLoader.FadeInRoutine(fadeDuration);
+        try
+        {
+            proteinLoader.LoadStructure(relativePath);
+            float loadDeadline = Time.realtimeSinceStartup + 15f;
+            while (!loaded && Time.realtimeSinceStartup < loadDeadline) yield return null;
+            yield return proteinLoader.FadeInRoutine(fadeDuration);
+        }
+        finally
+        {
+            if (proteinLoader != null) proteinLoader.OnLoaded -= OnLoadedOnce;
+            IsStructureChanging = false;
+        }
     }
 
     // --- Gate opening + Cl- flow (potentiator 성공) ---
@@ -447,6 +515,7 @@ public class CftrRescueController : MonoBehaviour
         _gateRoot.transform.SetParent(proteinLoader.transform, false);
         _gateRoot.transform.localPosition = _anchorLocalPos;
         _gateRoot.transform.localRotation = Quaternion.LookRotation(outward, Vector3.up);
+        AminoAcidOnlyVisual.Mark(_gateRoot, levelController); // Cl⁻ flow는 이 밑에 달려 함께 따라간다
 
         _gateLeft = BuildGateFlap("GateLeft", Vector3.left * 0.02f);
         _gateRight = BuildGateFlap("GateRight", Vector3.right * 0.02f);
@@ -551,9 +620,11 @@ public class CftrRescueController : MonoBehaviour
         yield return proteinLoader.FadeInRoutine(proteinFadeDuration);
         DestroyDna();
 
-        _stageActive = true;
+        _stageReady = true;
         EnsureQcParticles();
-        ApplyQcParticles();
+        // 인트로는 리본 단계에서 재생된다 — 여기서 무조건 켜면 QC 입자가 원자 단계에 닿기도 전에
+        // 리본 주위를 떠다닌다. 지금 보고 있는 단계에 맞춰 켠다.
+        SetStageVisuals(_atomLevelVisible);
         if (hud != null)
         {
             hud.gameObject.SetActive(true);

@@ -87,7 +87,7 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private void OnEnable()
     {
-        if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished += HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted += ApplyForSessionQuest;
     }
 
@@ -95,16 +95,14 @@ public class DockingQuestCatalog : MonoBehaviour
     {
         CancelPendingAdvance();
         _advanceOwners.Clear();
-        if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished -= HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted -= ApplyForSessionQuest;
     }
 
     private IEnumerator Start()
     {
-        string baseUrl = $"{Application.streamingAssetsPath}/{questsFolder}";
-
         QuestCatalogData index = null;
-        yield return Fetch($"{baseUrl}/{indexFile}",
+        yield return Fetch($"{questsFolder}/{indexFile}",
             text => index = JsonUtility.FromJson<QuestCatalogData>(text));
         if (index == null || index.quests == null || index.quests.Count == 0)
         {
@@ -115,7 +113,7 @@ public class DockingQuestCatalog : MonoBehaviour
         foreach (string file in index.quests)
         {
             DockingQuestDefinition def = null;
-            yield return Fetch($"{baseUrl}/{file}",
+            yield return Fetch($"{questsFolder}/{file}",
                 text => def = JsonUtility.FromJson<DockingQuestDefinition>(text));
             if (def != null) _quests.Add(def);
         }
@@ -132,8 +130,10 @@ public class DockingQuestCatalog : MonoBehaviour
         }
     }
 
-    private IEnumerator Fetch(string url, Action<string> onSuccess)
+    /// <summary>StreamingAssets 기준 상대 경로를 받아 읽어온다.</summary>
+    private IEnumerator Fetch(string relativePath, Action<string> onSuccess)
     {
+        string url = StreamingAssetsUrl.For(relativePath);
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
             yield return req.SendWebRequest();
@@ -250,13 +250,13 @@ public class DockingQuestCatalog : MonoBehaviour
         _pendingNextIndex = -1;
     }
 
-    private void HandleDockingFinished(DockingResult result)
+    private void HandleVerificationFinished()
     {
         // 세션이 있는 씬에서는 기존처럼 세션이 진행을 소유한다.
         if (questSession != null) return;
-        // CFTR 교정제의 중간 성공은 다음 사건으로 넘기지 않는다.
-        if (!result.IsSuccess || result.Compound == null || !result.Compound.completes_stage ||
-            !autoAdvanceOnSuccess || CurrentIndex < 0) return;
+        // 성공 여부와 completes_stage 판정은 DockingQuestController.CompleteVerification이 맡는다.
+        if (!autoAdvanceOnSuccess || CurrentIndex < 0) return;
+        // 구술 확인이 잠가 두었다면 예약만 걸고, 풀릴 때 ResumeAutoAdvance가 이어받는다.
         if (_pendingNextIndex >= 0) return;
         _pendingNextIndex = CurrentIndex + 1;
         if (_advanceOwners.Count == 0)

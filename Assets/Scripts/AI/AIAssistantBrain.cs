@@ -131,7 +131,7 @@ public partial class AIAssistantBrain : MonoBehaviour
                                   "파랑은 자신 있다는 뜻이고, 노랑이나 주황은 확신이 덜하다는 뜻이에요.";
 
     [Header("말하는 동안 입력 잠금")]
-    [Tooltip("설명이 끝나기 전에 구조나 후보물질을 클릭해 넘어가지 못하게 막는다.")]
+    [Tooltip("말하는 동안 후보물질 실험을 잠근다. 구조 탐색은 해설 도중에도 가능하다.")]
     public bool blockInteractionWhileSpeaking = true;
     [Tooltip("LLM 응답을 기다리는 동안에도 잠글지. 켜면 설명이 완전히 끝날 때까지 막지만, " +
              "응답이 느리면 그만큼 기다려야 한다.")]
@@ -270,8 +270,11 @@ public partial class AIAssistantBrain : MonoBehaviour
         bool speaking = IsBusy && !(bubble != null && bubble.IsPaused);
         bool locked = blockWhileWaitingForLlm ? speaking || (client != null && client.PendingRequests > 0) : speaking;
 
-        locked |= IsOralCheckActive && OralPhase != OralCheckPhase.Reviewing;
-        if (levelController != null) levelController.InputLocked = locked;
+        // Structure navigation is explicit intent: its next-level narration replaces the old one.
+        // Waiting for an off-screen/long speech must not strand the player in Ribbon view.
+        // 구술 확인은 예외다 — 답변 중에 단계가 바뀌면 채점 근거가 화면에서 사라진다. 복습 단계에서는 다시 푼다.
+        if (levelController != null)
+            levelController.InputLocked = IsOralCheckActive && OralPhase != OralCheckPhase.Reviewing;
         if (compoundPanel != null) compoundPanel.SpeechLocked = locked;
     }
 
@@ -521,6 +524,8 @@ public partial class AIAssistantBrain : MonoBehaviour
         if (!string.IsNullOrWhiteSpace(compound.scientific_name))
             selection.Append($" [실제 모델: {compound.scientific_name} — 학생에게는 위의 짧은 이름으로 부를 것]");
         selection.Append($" / 판정: {DescribeOutcome(result)}");
+        if (!string.IsNullOrEmpty(result.Prediction))
+            selection.Append($" / 사용자의 예상: {result.Prediction}. 예상과 관찰을 연결해서 설명할 것.");
 
         // 진입조차 못 한 경우의 친화도 값은 의미가 없다 — 패널도 "측정 불가"로 표시한다.
         if (!result.IsOrderError && result.Outcome != DockingOutcome.StericClash)
@@ -536,10 +541,17 @@ public partial class AIAssistantBrain : MonoBehaviour
         if (result.IsOrderError)
             return "순서 오류 — 결합 자리는 맞지만, 먼저 성공해야 할 다른 물질이 아직 남아 있어 물러났다. 오답이 아니다.";
 
+        if (!string.IsNullOrEmpty(result.Message)) return result.Message;
         switch (result.Outcome)
         {
             case DockingOutcome.Success:
                 return "성공 — 포켓에 들어가 표적 원자와 결합을 만들고 고정됐다.";
+            case DockingOutcome.PartialRecovery:
+                return "부분 회복 — 기능 지표 일부만 좋아졌다. 다음 작업이 남아 있다.";
+            case DockingOutcome.DegradationBlocked:
+                return "분해 경로는 줄었지만 접힘은 회복되지 않았고 스트레스가 증가했다.";
+            case DockingOutcome.UnstableBinding:
+                return "진입했지만 현재 포켓에서 안정적인 결합을 유지하지 못했다.";
             case DockingOutcome.NoWarhead:
                 return "실패 — 포켓 안에는 들어갔지만 붙잡아 둘 반응기가 없어 고정되지 못하고 다시 빠져나왔다.";
             case DockingOutcome.StericClash:

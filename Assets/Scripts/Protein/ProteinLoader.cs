@@ -140,8 +140,8 @@ public class ProteinLoader : MonoBehaviour
     private IEnumerator LoadRoutine()
     {
         string url = !string.IsNullOrEmpty(remoteJsonUrl)
-            ? remoteJsonUrl
-            : System.IO.Path.Combine(Application.streamingAssetsPath, streamingAssetsRelativePath);
+            ? StreamingAssetsUrl.ToUrl(remoteJsonUrl)
+            : StreamingAssetsUrl.For(streamingAssetsRelativePath);
 
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
