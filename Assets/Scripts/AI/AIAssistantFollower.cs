@@ -22,6 +22,7 @@ public enum AIAssistantAnchorPlacement
 /// CenterEyeAnchor로 바꾸면 되고, 나머지 로직은 수정할 필요가 없다
 /// (guide.md 1장 "컴포넌트 교체 방식" 원칙).
 /// </summary>
+[DefaultExecutionOrder(100)]
 public class AIAssistantFollower : MonoBehaviour
 {
     [Header("추종 대상")]
@@ -53,6 +54,25 @@ public class AIAssistantFollower : MonoBehaviour
              "정확히 같고, 가까운 레벨에서만 당김을 비례로 줄인다.")]
     [Range(0.05f, 0.9f)]
     public float maxPullFraction = 0.375f;
+    [Tooltip("비서가 카메라에 이보다 가까이 서지 않게 하는 바닥값(m).\n\n" +
+             "비서는 월드 오브젝트라 화면에서 보이는 크기가 카메라와의 거리에 그대로 반비례한다 — " +
+             "카메라가 구조에 바싹 붙는 단계에서 대상 거리에 비례해 당기다 보면 비서만 화면을 " +
+             "가득 채운다. 기본값 0.7은 정상적인 레벨(가장 가까운 Level4_Docking에서도 약 0.75)에 " +
+             "닿지 않으므로 평소 크기는 그대로 두고, 카메라가 예상보다 가까워진 경우에만 걸린다.")]
+    public float minAnchorDepth = 0.7f;
+
+    [Header("오른쪽 유지")]
+    [Tooltip("어떤 배치 경로로 자리를 잡았든 마지막에 화면 오른쪽으로 한 번 더 밀어낸다.\n\n" +
+             "자리를 정하는 길이 세 갈래(화면 사각형 회피 / 대상 옆 월드 오프셋 / 사용자 기준 " +
+             "오프셋)인데, 뒤 두 갈래는 화면 개념이 없어 카메라가 구조에 바싹 붙는 단계에서는 " +
+             "결과가 화면 한가운데로 떨어진다 — 구조를 정면에서 가리는 그 자리다. " +
+             "화면에서 생기는 문제라 화면에서 막는다.")]
+    public bool keepOnRightOfScreen = true;
+    [Tooltip("비서 어셈블리(본체 + 말풍선)의 <b>왼쪽 끝</b>이 이 뷰포트 x보다 왼쪽으로 내려오지 " +
+             "않게 한다. 0.5면 어셈블리 전체가 화면 오른쪽 절반 안에 머문다. " +
+             "어셈블리가 화면보다 넓어 그럴 자리가 없으면 가능한 한 오른쪽에 붙인다.")]
+    [Range(0f, 0.9f)]
+    public float minViewportX = 0.5f;
 
     [Header("가림 방지 (ScreenSpace 모드)")]
     [Tooltip("대상의 화면 사각형에서 얼마나 띄울지. 화면 높이 대비 비율.")]
@@ -162,6 +182,34 @@ public class AIAssistantFollower : MonoBehaviour
 
         UpdatePosition();
         UpdateRotation();
+        LimitScreenSize();
+        // Clamp the final pose, after rotation, floating and sizing, not only the desired anchor.
+        Vector3 safePosition = EnforceRightSide(transform.position);
+        _anchorPosition += safePosition - transform.position;
+        transform.position = safePosition;
+    }
+
+    private Vector3 _authoredScale;
+    private bool _hasAuthoredScale;
+    [Header("화면 크기 제한")]
+    [Range(0.1f, 0.5f)] public float maxScreenWidth = 0.25f;
+    [Range(0.15f, 0.6f)] public float maxScreenHeight = 0.34f;
+
+    private void LimitScreenSize()
+    {
+        Camera cam = ResolveCamera();
+        if (cam == null || cam.stereoEnabled) return;
+        if (!_hasAuthoredScale) { _authoredScale = transform.localScale; _hasAuthoredScale = true; }
+        // Measure from the authored scale each time; never compound last frame's shrink.
+        transform.localScale = _authoredScale;
+        MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out float top, includeUI: false);
+        float depth = Mathf.Max(cam.nearClipPlane * 2f,
+            Vector3.Dot(transform.position - cam.transform.position, cam.transform.forward));
+        float height = cam.orthographic ? cam.orthographicSize * 2f :
+            2f * depth * Mathf.Tan(cam.fieldOfView * Mathf.Deg2Rad * 0.5f);
+        float fit = Mathf.Min(1f, height * maxScreenHeight / Mathf.Max(top - bottom, 0.001f),
+            height * cam.aspect * maxScreenWidth / Mathf.Max(right - left, 0.001f));
+        transform.localScale = _authoredScale * fit;
     }
 
     // --- 위치 ---
@@ -203,15 +251,88 @@ public class AIAssistantFollower : MonoBehaviour
             if (anchorTarget != null && anchorPlacement == AIAssistantAnchorPlacement.ScreenSpace)
             {
                 Camera cam = ResolveCamera();
-                if (cam != null && TryComputeAnchorOnScreen(cam, out Vector3 onScreen)) return onScreen;
+                if (cam != null && TryComputeAnchorOnScreen(cam, out Vector3 onScreen)) return EnforceRightSide(onScreen);
             }
-            return ComputeUserRelativeAnchor(closeUpLocalOffset);
+            return EnforceRightSide(ComputeUserRelativeAnchor(closeUpLocalOffset));
         }
 
-        if (anchorTarget != null) return ComputeAnchorBesideTarget();
+        if (anchorTarget != null) return EnforceRightSide(ComputeAnchorBesideTarget());
 
-        return ComputeUserRelativeAnchor(localOffset);
+        return EnforceRightSide(ComputeUserRelativeAnchor(localOffset));
     }
+
+    /// <summary>
+    /// 자리를 다 잡은 뒤, 화면에서 너무 왼쪽에 섰으면 오른쪽으로 밀어낸다.
+    ///
+    /// 앞 단계들은 저마다 다른 기준(화면 사각형, 대상 옆 월드 오프셋, 사용자 기준 오프셋)으로
+    /// 자리를 고르는데, 셋 다 "화면 어디에 보이는가"를 보장하지는 않는다. 특히 월드 오프셋
+    /// 계열은 카메라가 구조에 바싹 붙는 단계(아미노산/도킹, 사건 5의 클로즈업)에서 상수 몇
+    /// 십 센티가 화면의 절반이 되어, 비서가 구조 정면 한가운데에 선다.
+    ///
+    /// 마지막에 한 번 화면 좌표로 검산해 오른쪽 경계 안으로 되돌리면, 앞 단계들을 건드리지
+    /// 않고도 "비서는 늘 오른쪽"이 성립한다. 이미 오른쪽에 있으면 좌표를 그대로 돌려주므로
+    /// 평소 배치(대상 우측 상단 회피)는 달라지지 않는다.
+    /// </summary>
+    private Vector3 EnforceRightSide(Vector3 desired)
+    {
+        if (!keepOnRightOfScreen) return desired;
+
+        Camera cam = ResolveCamera();
+        if (cam == null) return desired;
+
+        Vector3 viewport = cam.WorldToViewportPoint(desired);
+        // z가 근평면 안쪽이면 x/y는 투영이 뒤집힌 값이라 좌우 판정에 쓸 수 없다.
+        bool projectable = viewport.z > cam.nearClipPlane;
+        float depth = projectable ? viewport.z : FallbackAnchorDepth(cam);
+
+        float viewHeight = cam.orthographic
+            ? cam.orthographicSize * 2f
+            : 2f * depth * Mathf.Tan(cam.fieldOfView * 0.5f * Mathf.Deg2Rad);
+        float viewWidth = viewHeight * cam.aspect;
+        if (viewHeight <= 1e-4f || viewWidth <= 1e-4f) return desired;
+
+        MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out float top);
+        float vLeft = left / viewWidth;
+        float vRight = right / viewWidth;
+        float vBottom = bottom / viewHeight;
+        float vTop = top / viewHeight;
+
+        float padX = screenEdgePadding / Mathf.Max(cam.aspect, 1e-3f);
+        // 하한은 "어셈블리 왼쪽 끝이 minViewportX"가 되는 루트 위치, 상한은 오른쪽 끝이
+        // 화면 안에 남는 자리. 어셈블리가 그 사이에 안 들어가면(말풍선이 아주 길 때)
+        // 가운데로 물러나지 않고 상한 — 즉 가능한 한 오른쪽 — 을 택한다.
+        float minVx = Mathf.Max(padX, minViewportX) - vLeft;
+        float maxVx = 1f - padX - vRight;
+        float vx = Mathf.Min(Mathf.Max(projectable ? viewport.x : minVx, minVx), maxVx);
+
+        float vy = projectable ? viewport.y : 1f - screenEdgePadding - vTop;
+        vy = ClampOrCenter(vy, screenEdgePadding - vBottom, Mathf.Min(0.82f, 1f - screenEdgePadding - vTop));
+
+        if (projectable && Mathf.Approximately(vx, viewport.x) && Mathf.Approximately(vy, viewport.y))
+            return desired;
+
+        return cam.ViewportToWorldPoint(new Vector3(vx, vy, depth));
+    }
+
+    /// <summary>
+    /// 화면 투영이 성립하지 않을 때 쓸 깊이(카메라로부터의 거리).
+    /// 대상이 있으면 그 거리에서 <see cref="maxPullFraction"/>만큼만 당겨 근평면에 박히지 않게 한다.
+    /// </summary>
+    private float FallbackAnchorDepth(Camera cam)
+    {
+        float depth = closeUpOverrideActive ? closeUpLocalOffset.z : localOffset.z;
+
+        if (anchorTarget != null)
+        {
+            float toTarget = Vector3.Distance(cam.transform.position, anchorTarget.position);
+            depth = toTarget - Mathf.Min(anchorOffset.z, toTarget * maxPullFraction);
+        }
+
+        return Mathf.Max(depth, MinDepth(cam));
+    }
+
+    /// <summary>비서가 카메라에 다가갈 수 있는 한계 거리. 근평면보다는 항상 앞이어야 한다.</summary>
+    private float MinDepth(Camera cam) => Mathf.Max(minAnchorDepth, cam.nearClipPlane + 0.05f);
 
     private Vector3 ComputeUserRelativeAnchor(Vector3 offset)
     {
@@ -272,7 +393,7 @@ public class AIAssistantFollower : MonoBehaviour
         // 아래 여백/clamp 계산이 통째로 무의미해진다(maxPullFraction 참고).
         float toTarget = Vector3.Distance(cam.transform.position, targetBounds.center);
         float pull = Mathf.Min(anchorOffset.z, toTarget * maxPullFraction);
-        float depth = Mathf.Max(toTarget - pull, cam.nearClipPlane + 0.05f);
+        float depth = Mathf.Max(toTarget - pull, MinDepth(cam));
 
         // 그 깊이에서 뷰포트 1.0이 덮는 월드 크기. 어셈블리 여유(m)를 뷰포트 단위로 바꾸는 데 쓴다.
         float viewHeight = cam.orthographic
@@ -359,10 +480,17 @@ public class AIAssistantFollower : MonoBehaviour
         Vector3 viewForward = -towardUser;                                  // 사용자가 대상을 보는 방향
         Vector3 right = Vector3.Cross(Vector3.up, viewForward).normalized;  // 그 방향 기준 오른쪽
 
+        // 당김도 화면 계산 쪽과 같은 비율 상한을 따른다(maxPullFraction 참고). 고정 거리로만
+        // 당기면 카메라가 대상에 붙는 단계(아미노산/도킹은 1.2 unit, 사건 5 클로즈업은 1.5)에서
+        // 당김이 거리를 통째로 삼켜 비서가 렌즈 앞에 박힌다 — 화면을 가득 채운 채 정면에 서는
+        // 그 자리다. 기본값 기준 Level2(3.2 unit)에서는 3.2 x 0.375 = 1.2로 예전과 같다.
+        float toTarget = Vector3.Distance(followTarget.position, target);
+        float pull = Mathf.Min(anchorOffset.z, toTarget * maxPullFraction);
+
         return target
              + right * anchorOffset.x
              + Vector3.up * anchorOffset.y
-             + towardUser * anchorOffset.z;
+             + towardUser * pull;
     }
 
     // --- 경계 측정 ---
@@ -428,7 +556,7 @@ public class AIAssistantFollower : MonoBehaviour
     /// 말풍선이 꺼져 있어도 자리를 미리 비워둔다. 그래야 말하기 시작하는 순간
     /// 비서가 옆으로 밀려나지 않는다.
     /// </summary>
-    private void MeasureAssemblyExtents(Camera cam, out float left, out float right, out float bottom, out float top)
+    private void MeasureAssemblyExtents(Camera cam, out float left, out float right, out float bottom, out float top, bool includeUI = true)
     {
         left = right = bottom = top = 0f;
 
@@ -447,10 +575,15 @@ public class AIAssistantFollower : MonoBehaviour
                 Accumulate(BoundsCorner(b, i) - origin, camRight, camUp, ref left, ref right, ref bottom, ref top);
         }
 
-        if (_selfRects == null) _selfRects = GetComponentsInChildren<RectTransform>(true);
+        // SpeechBubble maintains its own apparent size by compensating its parent's scale.
+        // Including it in body scaling creates a shrink/compensate feedback loop.
+        if (!includeUI) return;
+        // UI is created/resized at runtime; do not cache an incomplete hierarchy.
+        _selfRects = GetComponentsInChildren<RectTransform>(true);
         foreach (RectTransform rect in _selfRects)
         {
-            if (rect == null) continue;
+            // Empty Canvas/layout rectangles are not visible geometry.
+            if (rect == null || rect.GetComponent<UnityEngine.UI.Graphic>() == null) continue;
 
             rect.GetWorldCorners(_rectCorners);
             for (int i = 0; i < 4; i++)

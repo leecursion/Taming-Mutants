@@ -26,6 +26,13 @@ public class P53QuestDirector : MonoBehaviour
     public string stabilizerCompoundId = "p53_stabilizer";
     [Tooltip("사량체가 모여들 DBD 대표 위치 (보통 ProteinAnchor_Main)")]
     public Transform dbdAnchor;
+    [Tooltip("마무리 연출로 만든 DNA/사량체를 원자 단계에서만 보이게 하려고 구독한다. " +
+             "비우면 씬에서 자동 탐색.")]
+    public StructureLevelController levelController;
+    [Tooltip("다른 사건으로 넘어갈 때 이 연출을 치우려고 구독한다. 비우면 씬에서 자동 탐색.")]
+    public DockingQuestCatalog questCatalog;
+    [Tooltip("이 연출이 속한 퀘스트 id. 다른 사건이 시작되면 만들어 둔 장면을 지운다.")]
+    public string activeForQuestId = "p53_y220c";
 
     [Header("Before/After 타이밍(초)")]
     public float holdAfterDockingSeconds = 1.5f;
@@ -53,6 +60,9 @@ public class P53QuestDirector : MonoBehaviour
         if (thermal == null) thermal = FindFirstObjectByType<ThermalStabilityController>(FindObjectsInactive.Include);
         if (hud == null) hud = FindFirstObjectByType<ThermalStabilityHUD>(FindObjectsInactive.Include);
         if (dbdAnchor == null && thermal != null && thermal.proteinLoader != null) dbdAnchor = thermal.proteinLoader.transform;
+        if (levelController == null && thermal != null) levelController = thermal.levelController;
+        if (levelController == null) levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
+        if (questCatalog == null) questCatalog = FindFirstObjectByType<DockingQuestCatalog>(FindObjectsInactive.Include);
 
         BuildFadeOverlay();
     }
@@ -60,11 +70,40 @@ public class P53QuestDirector : MonoBehaviour
     private void OnEnable()
     {
         if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (levelController != null) levelController.OnLevelChanged += HandleLevelChanged;
+        if (questCatalog != null) questCatalog.OnQuestStarted += HandleQuestStarted;
     }
 
     private void OnDisable()
     {
         if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
+        if (questCatalog != null) questCatalog.OnQuestStarted -= HandleQuestStarted;
+    }
+
+    /// <summary>
+    /// DNA/사량체는 단백질 앵커 옆에 세운 별개 오브젝트라, 원자를 끄는 레벨 전환이 함께 끄지
+    /// 못한다. 마무리 연출을 본 뒤 '이전'을 누르면 나선/리본 화면에 초록 구슬과 DNA만 남는다.
+    /// </summary>
+    private void HandleLevelChanged(StructureLevelController.ViewLevel level)
+    {
+        if (_dnaRoot == null) return;
+        _dnaRoot.SetActive(level == StructureLevelController.ViewLevel.AminoAcid);
+    }
+
+    /// <summary>다른 사건으로 넘어가면 이 사건의 마무리 장면은 치운다. 같은 사건을 다시 고르면
+    /// 연출도 처음부터 다시 볼 수 있어야 하므로 재생 여부도 함께 되돌린다.</summary>
+    private void HandleQuestStarted(DockingQuestDefinition def)
+    {
+        StopAllCoroutines();
+        if (_fadeOverlay != null) _fadeOverlay.alpha = 0f;
+
+        if (_dnaRoot != null) Destroy(_dnaRoot);
+        _dnaRoot = null;
+        _tetramerSubunits.Clear();
+        _tetramerTargets = null;
+
+        _finalePlayed = def == null || def.id != activeForQuestId;
     }
 
     private void HandleDockingFinished(DockingResult result)
@@ -74,7 +113,9 @@ public class P53QuestDirector : MonoBehaviour
         if (result.Compound == null || result.Compound.id != stabilizerCompoundId) return;
 
         _finalePlayed = true;
-        StartCoroutine(FinaleRoutine());
+        if (dockingController.selectionPanel != null)
+            dockingController.selectionPanel.Experiment.OfferVerification("37°C에서 검증", () => StartCoroutine(FinaleRoutine()));
+        else StartCoroutine(FinaleRoutine());
     }
 
     private IEnumerator FinaleRoutine()
@@ -88,6 +129,9 @@ public class P53QuestDirector : MonoBehaviour
         yield return Fade(1f, 0f);
 
         yield return TetramerConvergeRoutine();
+        if (dockingController != null && dockingController.selectionPanel != null)
+            dockingController.selectionPanel.Experiment.FinishVerification("37°C · 처리 전후 비교: 흔들림 감소 / DNA 결합 회복");
+        if (dockingController != null) dockingController.CompleteVerification();
 
         if (hud != null)
             hud.ShowMessage("단백질이 안정되면 → DNA와 다시 결합할 수 있고 → p53이 원래 하던 일(암 억제)을 다시 할 수 있어요.");
@@ -121,6 +165,7 @@ public class P53QuestDirector : MonoBehaviour
         if (dbdAnchor == null) return;
 
         _dnaRoot = new GameObject("DnaResponseElement");
+        AminoAcidOnlyVisual.Mark(_dnaRoot, levelController);
         _dnaRoot.transform.SetParent(dbdAnchor.parent, false);
         _dnaRoot.transform.position = dbdAnchor.position + dbdAnchor.forward * 1.4f;
         _dnaRoot.transform.rotation = Quaternion.LookRotation(dbdAnchor.forward, Vector3.up);

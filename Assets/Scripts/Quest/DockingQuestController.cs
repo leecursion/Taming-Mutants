@@ -63,6 +63,7 @@ public class DockingQuestController : MonoBehaviour
     /// <see cref="AIAssistantBrain"/>이 이걸 받아 결과를 설명한다.
     /// </summary>
     public event Action<DockingResult> OnDockingFinished;
+    public event Action OnVerificationFinished;
 
     private readonly List<AtomInfo> _pocketAtoms = new List<AtomInfo>();
     private readonly List<GameObject> _questSpawned = new List<GameObject>(); // 락인된 클론·공유결합 등 퀘스트 산출물
@@ -70,6 +71,8 @@ public class DockingQuestController : MonoBehaviour
     // "이미 Success한 화합물 id"를 기억해, 아직 순서가 안 된 화합물의 requires_prior_success_id를 검사한다.
     private readonly HashSet<string> _succeededCompoundIds = new HashSet<string>();
     private AtomInfo _targetSulfur;   // Cys12의 SG (없으면 해당 잔기 CA로 폴백)
+    private string _questId;
+    private string _attemptPrediction;
     private bool _indexed;
     private bool _questCompleted;
     private Coroutine _pulseRoutine;
@@ -87,6 +90,7 @@ public class DockingQuestController : MonoBehaviour
             if (go != null) Destroy(go);
         _questSpawned.Clear();
 
+        _questId = def.id;
         targetResidueId = def.target_residue_id;
         // 빈 문자열은 "지정 안 함"이지 "이전 값을 유지하라"가 아니다. ABL1 T315I나 CFTR F508del처럼
         // 공유결합이 아닌 사건은 표적 원자를 비워 두는데, 앞서 플레이한 사건이 남긴 "SG"가 그대로
@@ -212,7 +216,9 @@ public class DockingQuestController : MonoBehaviour
         }
 
         selectionPanel.Interactable = false;
+        _attemptPrediction = selectionPanel.Experiment.Prediction;
         selectionPanel.ClearResult();
+        selectionPanel.Experiment.SetPhase("포켓 접근 · 접촉 위치 관찰");
         if (hud != null) hud.HideWarning(); // 새 시도마다 이전 경고 배너를 지운다
 
         // 원자 단위 표시로 전환 (도킹은 원자 레벨에서만 의미가 있다)
@@ -272,6 +278,7 @@ public class DockingQuestController : MonoBehaviour
                 yield return SuccessSequence(slot, clone, pocketCenter);
                 break;
 
+            case DockingOutcome.UnstableBinding:
             case DockingOutcome.NoWarhead:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
@@ -282,8 +289,10 @@ public class DockingQuestController : MonoBehaviour
 
             case DockingOutcome.StericClash:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
-                // 입구에서 걸림: 충돌 셸 + 흔들림
-                StartCoroutine(BurstEffect(entrance, failColor, 0.7f, 0.9f));
+                Vector3 clashPoint = Vector3.Lerp(entrance, pocketCenter, Mathf.Clamp01(slot.Data.clash_depth));
+                yield return MoveTo(clone.transform, clashPoint, 0.45f, spin: false);
+                selectionPanel.Experiment.SetPhase("충돌 · 표시된 부위와 후보의 폭을 비교하세요");
+                StartCoroutine(BurstEffect(clashPoint, failColor, 0.3f, 0.9f));
                 yield return Shake(clone.transform, 0.6f, 0.035f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 0.9f, 0.4f, spin: false);
                 FinishFailure(slot, clone, failColor, outcome);
@@ -298,6 +307,21 @@ public class DockingQuestController : MonoBehaviour
                 break;
 
             // --- p53 Y220C 열안정성 퀘스트 전용 (같은 Snap 판정 + 결과별 짧은 VFX/HUD만 다르다) ---
+
+            case DockingOutcome.PartialRecovery:
+                yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                selectionPanel.Experiment.SetPhase("부분 회복 · 표면의 CFTR 양을 확인하세요");
+                yield return BurstEffect(pocketCenter, noWarheadColor, 0.22f, 0.8f);
+                FinishFailure(slot, clone, noWarheadColor, outcome);
+                break;
+
+            case DockingOutcome.DegradationBlocked:
+                // A pathway intervention is not a molecule colliding with the CFTR pocket.
+                selectionPanel.Experiment.SetPhase("분해 경로 변화 · 접힘은 회복됐을까요?");
+                yield return new WaitForSeconds(0.7f);
+                FinishFailure(slot, clone, noWarheadColor, outcome);
+                break;
 
             case DockingOutcome.FragmentHit:
                 // 포켓엔 들어가 잠깐 안정화 효과가 보이지만, 오래 붙어있지 못하고 이탈한다.
@@ -353,7 +377,7 @@ public class DockingQuestController : MonoBehaviour
 
         // Warhead 원자 ↔ S 원자 공유결합 실린더 생성
         Transform warhead = FindWarhead(clone);
-        if (warhead != null && _targetSulfur != null)
+        if (slot.Data.forms_covalent_bond && warhead != null && _targetSulfur != null)
         {
             GameObject prefab = covalentBondPrefab != null ? covalentBondPrefab : proteinLoader.bondPrefab;
             if (prefab != null)
@@ -383,6 +407,10 @@ public class DockingQuestController : MonoBehaviour
         if (thermal != null) thermal.SetStabilized(true);
         if (hud != null) hud.SetDnaBindingCompetent(true);
 
+        selectionPanel.Experiment.SetPhase(slot.Data.forms_covalent_bond ?
+            "고정 완료 → 이상 신호 감소 ●●○○" : "결합 반응 → 기능 변화 관찰");
+        yield return new WaitForSeconds(0.65f);
+        selectionPanel.Experiment.Record(slot.Data, successColor, false);
         _succeededCompoundIds.Add(slot.Data.id);
         if (cftr != null) cftr.HandleCompoundSuccess(slot.Data.id);
 
@@ -395,6 +423,8 @@ public class DockingQuestController : MonoBehaviour
         }
         else
         {
+            if (slot.Data.id == "corrector_pair" && cftr != null)
+                while (cftr.IsStructureChanging) yield return null;
             selectionPanel.Interactable = true;
         }
 
@@ -402,9 +432,38 @@ public class DockingQuestController : MonoBehaviour
         {
             Outcome = DockingOutcome.Success,
             Compound = slot.Data,
+            Prediction = _attemptPrediction,
             Message = slot.Data.result_message,
         });
+        bool hasDedicatedVerification =
+            (_questId == "p53_y220c" && FindFirstObjectByType<P53QuestDirector>() != null) ||
+            (_questId == "cftr_f508del" && FindFirstObjectByType<CftrFinaleController>() != null);
+        if (slot.Data.completes_stage && !hasDedicatedVerification)
+            selectionPanel.Experiment.OfferVerification("기능 변화 검증", () => StartCoroutine(VerifySignalRoutine()));
         // 성공 시 clone은 포켓에 그대로 남긴다 (KRAS OFF 락인 상태 / CFTR 락인 상태)
+    }
+
+    public void CompleteVerification()
+    {
+        if (!_questCompleted) return;
+        QuestSession session = FindFirstObjectByType<QuestSession>();
+        if (session != null) session.CompleteVerifiedQuest(_questId);
+        OnVerificationFinished?.Invoke();
+    }
+
+    private IEnumerator VerifySignalRoutine()
+    {
+        string label = _questId == "egfr_l858r" ? "EGFR → 하위 신호" :
+            _questId == "abl1_t315i" ? "ABL1 → 키나아제 신호" :
+            _questId == "kras_g12c" ? "KRAS → 성장 신호" : "기능 검증";
+        for (int step = 4; step >= 0; step--)
+        {
+            selectionPanel.Experiment.SetPhase(label + "  " + new string('●', step) + new string('○', 4 - step));
+            yield return new WaitForSeconds(0.45f);
+        }
+        selectionPanel.Experiment.FinishVerification(label + " 감소 · 포켓 결합과 기능 변화 연결 확인");
+        yield return new WaitForSeconds(1.5f);
+        CompleteVerification();
     }
 
     /// <summary>
@@ -422,6 +481,7 @@ public class DockingQuestController : MonoBehaviour
         ApplyPocketMarker();
 
         Color orderColor = new Color(1f, 0.85f, 0.25f); // 경고색 — 실패(빨강)도 성공(초록)도 아니다
+        selectionPanel.Experiment.Record(slot.Data, orderColor, true);
         slot.SetResultColor(orderColor);
         selectionPanel.ShowResult(slot.Data, orderColor,
             messageOverride: slot.Data.order_error_message,
@@ -433,6 +493,7 @@ public class DockingQuestController : MonoBehaviour
         {
             Outcome = DockingOutcome.NoWarhead, // 연출 계열은 NoWarhead와 같지만 판정은 다르다
             Compound = slot.Data,
+            Prediction = _attemptPrediction,
             IsOrderError = true,
             Message = slot.Data.order_error_message,
         });
@@ -444,6 +505,7 @@ public class DockingQuestController : MonoBehaviour
         ApplyPocketMarker(); // 완전히 원래 색으로 되돌리면 다시 "끊긴 원자"처럼 보이므로 표시색을 유지한다
         UnityEngine.Object.Destroy(clone);
 
+        selectionPanel.Experiment.Record(slot.Data, color, false);
         slot.SetResultColor(color);
         selectionPanel.ShowResult(slot.Data, color);
         selectionPanel.Interactable = true; // 재도전 허용
@@ -452,6 +514,7 @@ public class DockingQuestController : MonoBehaviour
         {
             Outcome = outcome,
             Compound = slot.Data,
+            Prediction = _attemptPrediction,
             Message = slot.Data.result_message,
         });
     }

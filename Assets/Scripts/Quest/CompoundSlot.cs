@@ -45,10 +45,12 @@ public class CompoundSlot : MonoBehaviour
         col.size = Vector3.one * boxSize;
     }
 
+    public bool Inspecting { get; set; }
+
     private void Update()
     {
         // 박스 안에서 분자가 천천히 자전해 3D 형태를 파악하기 쉽게 한다.
-        if (MoleculeRoot != null)
+        if (MoleculeRoot != null && !Inspecting)
             MoleculeRoot.transform.Rotate(Vector3.up, _spinSpeed * Time.deltaTime, Space.Self);
     }
 

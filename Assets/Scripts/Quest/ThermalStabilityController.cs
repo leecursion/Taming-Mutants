@@ -74,6 +74,9 @@ public class ThermalStabilityController : MonoBehaviour
     public ThermalStabilityHUD hud;
     [Tooltip("비워두면 Camera.main")]
     public Camera targetCamera;
+    [Tooltip("클로즈업이 끝났을 때 카메라를 되돌릴 '제자리'를 물어보는 곳. 비우면 씬에서 자동 탐색, " +
+             "그래도 없으면 클로즈업 직전에 찍어둔 포즈로 되돌린다.")]
+    public CameraTransitionDirector cameraDirector;
 
     [Header("온도 범위")]
     public float minCelsius = 20f;
@@ -141,6 +144,7 @@ public class ThermalStabilityController : MonoBehaviour
         if (selectionPanel == null) selectionPanel = FindFirstObjectByType<CompoundSelectionPanel>(FindObjectsInactive.Include);
         if (assistantFollower == null) assistantFollower = FindFirstObjectByType<AIAssistantFollower>(FindObjectsInactive.Include);
         if (assistant == null) assistant = FindFirstObjectByType<AIAssistantBrain>(FindObjectsInactive.Include);
+        if (cameraDirector == null) cameraDirector = FindFirstObjectByType<CameraTransitionDirector>(FindObjectsInactive.Include);
         _transparentMaterial = BuildTransparentMaterial();
     }
 
@@ -164,7 +168,17 @@ public class ThermalStabilityController : MonoBehaviour
     {
         _isActiveQuest = def != null && def.id == activeForQuestId;
         _sliderExplained = false; // 사건을 새로 시작하면 슬라이더 설명도 처음부터
-        if (!_isActiveQuest) ExitThermalStage();
+
+        // 찍어둔 '제자리'는 그 사건의 카메라 자리다. 사건이 바뀌면 의미가 없으니 버린다.
+        _hasCameraSnapshot = false;
+
+        if (_isActiveQuest) return;
+
+        ExitThermalStage();
+        // 파티클은 단백질 앵커의 자식이라 구조를 새로 읽어도 살아남는다. 위치는 p53의 변이 자리
+        // 좌표에 고정돼 있으므로, 다른 사건의 구조 위에 남으면 아무 의미 없는 자리에서 입자가
+        // 피어오른다. 숨기는 것으로는 부족하고 다음 사건이 들고 갈 이유도 없으니 지운다.
+        DestroyAggregateParticles();
     }
 
     // DockingQuestController가 도킹을 활성화하는 시점(아미노산 레벨)과 같은 신호로
@@ -207,6 +221,7 @@ public class ThermalStabilityController : MonoBehaviour
 
         IndexAtoms();
         EnsureAggregateParticles();
+        SetAggregateParticlesVisible(true);
 
         if (hud != null) hud.gameObject.SetActive(true);
 
@@ -264,6 +279,16 @@ public class ThermalStabilityController : MonoBehaviour
         _thermalStageActive = false;
         if (_sliderPanel != null) _sliderPanel.SetActive(false);
         if (hud != null) hud.gameObject.SetActive(false);
+
+        // 온도 인터랙션이 남긴 것들을 원자와 같은 시점에 함께 거둔다. 원자·결합은 레벨 전환이
+        // 알아서 끄지만 아래 둘은 그 대상이 아니라, 놓아두면 나선/리본 화면에 아미노산 단계의
+        // 잔해로 남는다.
+        //   - 응집 입자: 단백질 앵커의 자식이라 원자가 꺼져도 그대로 떠 있는다. 방출만 멈추면
+        //     이미 떠 있는 입자가 수명(2.2초)만큼 더 남으므로 살아있는 입자까지 지운다.
+        //   - 흔들림: 원자만 흔들고 결합 실린더는 가만히 있으므로, 흔들린 자리에서 멈추면
+        //     다시 내려왔을 때 원자가 결합에서 어긋난 채로 굳어 보인다.
+        SetAggregateParticlesVisible(false);
+        RestoreWobbleHomePositions();
 
         // 카메라가 원래 자리로 돌아가기 시작하는 시점에 맞춰 판넬/비서도 원래 배치 규칙으로
         // 되돌린다. 둘 다 lazy-follow/매 프레임 재배치로 자리를 잡으므로 카메라 복귀 애니메이션과
@@ -407,6 +432,10 @@ public class ThermalStabilityController : MonoBehaviour
 
     private void ApplyWobble()
     {
+        // 원자 단계를 벗어나면 흔들지 않는다. 화면에 안 보이니 공짜처럼 보이지만, 계속 흔들면
+        // 원자가 결합 실린더에서 떨어진 자리에 놓인 채로 단계가 바뀌고, ExitThermalStage가
+        // 되돌려 놓은 제자리를 곧바로 다시 흐트러뜨린다.
+        if (!_thermalStageActive) return;
         if (_wobbleTargets.Count == 0 || Normalized01 <= 0f) return;
 
         float amplitude = maxWobbleAmplitude * Normalized01 * (_stabilized ? StabilizedWobbleDamping : 1f);
@@ -426,6 +455,16 @@ public class ThermalStabilityController : MonoBehaviour
             float oz = (Mathf.PerlinNoise(Time.time * wobbleFrequency + seed, seed) - 0.5f) * 2f;
 
             t.localPosition = _wobbleHomePositions[i] + new Vector3(ox, oy, oz) * (amplitude * w);
+        }
+    }
+
+    /// <summary>흔들던 원자를 인덱싱 시점의 제자리로 되돌린다.</summary>
+    private void RestoreWobbleHomePositions()
+    {
+        for (int i = 0; i < _wobbleTargets.Count && i < _wobbleHomePositions.Count; i++)
+        {
+            Transform t = _wobbleTargets[i];
+            if (t != null) t.localPosition = _wobbleHomePositions[i];
         }
     }
 
@@ -482,6 +521,7 @@ public class ThermalStabilityController : MonoBehaviour
         var go = new GameObject("AggregateParticles");
         go.transform.SetParent(proteinLoader.transform, false);
         go.transform.localPosition = _mutationLocalPos;
+        AminoAcidOnlyVisual.Mark(go, levelController); // 원자 단계 밖에서는 레벨 컨트롤러가 꺼 준다
 
         _aggregateParticles = go.AddComponent<ParticleSystem>();
         var main = _aggregateParticles.main;
@@ -516,6 +556,35 @@ public class ThermalStabilityController : MonoBehaviour
         renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
     }
 
+    /// <summary>
+    /// 응집 입자를 켜고 끈다. 끌 때는 방출을 멈추는 것만으로 부족하다 — 이미 떠 있는 입자가
+    /// 수명(startLifetime)만큼 더 살아 있어, '이전'을 누른 뒤에도 나선 화면에 주황색 입자가
+    /// 한동안 남는다. Clear로 살아있는 입자까지 지운 뒤 오브젝트를 통째로 끈다.
+    /// </summary>
+    private void SetAggregateParticlesVisible(bool visible)
+    {
+        if (_aggregateParticles == null) return;
+
+        if (visible)
+        {
+            _aggregateParticles.gameObject.SetActive(true);
+            ApplyAggregateParticles(Normalized01);
+            _aggregateParticles.Play(true); // Stop으로 멈춰 둔 상태에서 돌아왔을 수 있다
+            return;
+        }
+
+        _aggregateParticles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        _aggregateParticles.gameObject.SetActive(false);
+    }
+
+    private void DestroyAggregateParticles()
+    {
+        if (_aggregateParticles == null) return;
+
+        Destroy(_aggregateParticles.gameObject);
+        _aggregateParticles = null;
+    }
+
     private void ApplyAggregateParticles(float t01)
     {
         if (_aggregateParticles == null) return;
@@ -531,16 +600,59 @@ public class ThermalStabilityController : MonoBehaviour
     {
         if (targetCamera == null || !_hasMutationAnchor || proteinLoader == null) yield break;
 
-        // 되돌아갈 자리를 먼저 찍어둔다 — ExitThermalStage(예: '이전' 버튼)가 이 값으로 복귀시킨다.
-        _cameraPosBeforeTransition = targetCamera.transform.position;
-        _cameraRotBeforeTransition = targetCamera.transform.rotation;
-        _hasCameraSnapshot = true;
+        // 되돌아갈 자리를 찍어둔다 — CameraTransitionDirector가 없는 씬에서 쓰는 폴백이다.
+        //
+        // 이미 스냅샷이 있으면 덮어쓰지 않는다. 원자 단계를 오갈 때마다 다시 찍으면, 복귀
+        // 애니메이션(1.1초)이 끝나기 전에 다시 내려간 경우 "복귀 도중의 중간 지점"을 새 제자리로
+        // 기억한다. 그 오차는 오갈 때마다 쌓여 카메라가 조금씩 구조 쪽으로 끌려 들어가고,
+        // 결국 나선 단계로 올라와도 구조가 코앞에 있는 것처럼 보인다 — 클로즈업이 있는
+        // 사건 5에서만 나타나던 증상이 이것이다.
+        if (!_hasCameraSnapshot)
+        {
+            _cameraPosBeforeTransition = targetCamera.transform.position;
+            _cameraRotBeforeTransition = targetCamera.transform.rotation;
+            _hasCameraSnapshot = true;
+        }
 
         Vector3 focusWorld = proteinLoader.transform.TransformPoint(_mutationLocalPos);
         Vector3 fromPos = targetCamera.transform.position;
         Vector3 dirFromFocus = (fromPos - focusWorld);
         if (dirFromFocus.sqrMagnitude < 1e-4f) dirFromFocus = -targetCamera.transform.forward;
-        Vector3 toPos = focusWorld + dirFromFocus.normalized * cameraCloseUpDistance;
+        // Fit the visible atom render bounds, not a fixed distance from one residue.
+        // Include atomic radii, depth and thermal motion so foreground atoms never fill the lens.
+        Vector3 forward = -dirFromFocus.normalized;
+        Quaternion framingRotation = Quaternion.LookRotation(forward, Vector3.up);
+        Vector3 right = framingRotation * Vector3.right;
+        Vector3 up = framingRotation * Vector3.up;
+        var corners = new List<Vector3>();
+        Bounds visibleBounds = new Bounds(focusWorld, Vector3.zero);
+        bool found = false;
+        foreach (AtomInfo atom in proteinLoader.GetComponentsInChildren<AtomInfo>())
+        {
+            Renderer renderer = atom.GetComponent<Renderer>();
+            if (renderer == null || !renderer.enabled) continue;
+            Bounds b = renderer.bounds;
+            if (!found) { visibleBounds = b; found = true; } else visibleBounds.Encapsulate(b);
+            for (int i = 0; i < 8; i++) corners.Add(b.center + Vector3.Scale(b.extents,
+                new Vector3((i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f)));
+        }
+        if (found) focusWorld = visibleBounds.center;
+        float distance = cameraCloseUpDistance;
+        float tanY = Mathf.Tan(targetCamera.fieldOfView * Mathf.Deg2Rad * 0.5f);
+        // Reserve the sides for candidates/assistant and top/bottom for experiment/temperature UI.
+        float tanX = tanY * targetCamera.aspect * 0.40f;
+        tanY *= 0.50f;
+        foreach (Vector3 corner in corners)
+        {
+            Vector3 offset = corner - focusWorld;
+            float z = Vector3.Dot(offset, forward);
+            float padding = maxWobbleAmplitude * proteinLoader.transform.lossyScale.magnitude;
+            distance = Mathf.Max(distance,
+                (Mathf.Abs(Vector3.Dot(offset, right)) + padding) / Mathf.Max(tanX, 0.01f) - z,
+                (Mathf.Abs(Vector3.Dot(offset, up)) + padding) / Mathf.Max(tanY, 0.01f) - z,
+                targetCamera.nearClipPlane + padding - z);
+        }
+        Vector3 toPos = focusWorld - forward * distance;
 
         Quaternion fromRot = targetCamera.transform.rotation;
         Quaternion toRot = Quaternion.LookRotation((focusWorld - toPos).normalized, Vector3.up);
@@ -552,10 +664,31 @@ public class ThermalStabilityController : MonoBehaviour
     {
         if (targetCamera == null) yield break;
 
+        // 카메라가 이미 다른 이유로 이동 중이면(퀘스트 단계 전환 연출) 손대지 않는다.
+        // 두 코루틴이 같은 프레임에 같은 transform을 쓰면 나중에 도는 쪽이 이기는데,
+        // 그 순서는 보장되지 않아 어느 자리에 착지할지가 실행마다 달라진다.
+        if (cameraDirector != null && cameraDirector.IsTransitioning)
+        {
+            _hasCameraSnapshot = false;
+            yield break;
+        }
+
+        // 제자리를 아는 쪽은 레벨 연출을 관장하는 CameraTransitionDirector다. 찍어둔 스냅샷은
+        // 그게 없는 씬에서만 쓴다.
+        Vector3 toPos;
+        Quaternion toRot;
+        if (cameraDirector == null ||
+            !cameraDirector.TryGetCurrentLevelPose(out toPos, out toRot))
+        {
+            if (!_hasCameraSnapshot) yield break;
+            toPos = _cameraPosBeforeTransition;
+            toRot = _cameraRotBeforeTransition;
+        }
+
         Vector3 fromPos = targetCamera.transform.position;
         Quaternion fromRot = targetCamera.transform.rotation;
 
-        yield return LerpCamera(fromPos, _cameraPosBeforeTransition, fromRot, _cameraRotBeforeTransition);
+        yield return LerpCamera(fromPos, toPos, fromRot, toRot);
         _hasCameraSnapshot = false;
     }
 

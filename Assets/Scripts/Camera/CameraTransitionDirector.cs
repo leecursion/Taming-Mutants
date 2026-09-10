@@ -139,6 +139,28 @@ public class CameraTransitionDirector : MonoBehaviour
         OnTransitionCompleted?.Invoke(level);
     }
 
+    /// <summary>
+    /// 지금 레벨에서 카메라가 서 있어야 할 포즈. 해당 무대가 없으면 false.
+    ///
+    /// 카메라를 잠시 빌려 가는 연출(예: ThermalStabilityController의 변이 자리 클로즈업)이
+    /// 끝나고 제자리로 돌아갈 때 쓴다. 빌려 가기 직전 포즈를 스스로 찍어두는 방법도 있지만,
+    /// 그 순간 카메라가 이미 <see cref="GoTo"/> 연출로 이동 중이면 중간 지점을 "제자리"로
+    /// 기억해 버리고, 빌리고 돌려주기를 반복하면 그 오차가 매번 쌓여 카메라가 조금씩
+    /// 구조 쪽으로 끌려 들어간다. 제자리를 아는 쪽은 언제나 이 컴포넌트다.
+    /// </summary>
+    public bool TryGetCurrentLevelPose(out Vector3 position, out Quaternion rotation)
+    {
+        position = default;
+        rotation = default;
+
+        LevelStage stage = Find(CurrentLevel);
+        if (stage == null || stage.Anchor == null) return false;
+
+        position = stage.Anchor.position;
+        rotation = stage.Anchor.rotation;
+        return true;
+    }
+
     /// <summary>연출과 함께 지정한 레벨로 이동한다. 이미 그 레벨이면 아무 일도 하지 않는다.</summary>
     public void GoTo(QuestLevel level)
     {

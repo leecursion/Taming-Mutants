@@ -154,6 +154,11 @@ public class CompoundSelectionPanel : MonoBehaviour
     private readonly List<CompoundSlot> _slots = new List<CompoundSlot>();
     private Transform _contentRoot;   // 슬롯/라벨이 모두 이 아래 — 레벨 연동 표시 토글용
     private CompoundSlot _hovered;
+    private LabExperimentUI _experiment;
+    public LabExperimentUI Experiment => _experiment != null ? _experiment :
+        (_experiment = gameObject.AddComponent<LabExperimentUI>());
+    public bool CanStartExperiment => AcceptsInput && isActiveAndEnabled &&
+        (_contentRoot == null || _contentRoot.gameObject.activeSelf);
     private TextMesh _resultText;
     private TextMesh _affinityText;
     private Coroutine _loadRoutine;
@@ -432,6 +437,7 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void ClearSlots()
     {
+        if (_experiment != null) _experiment.ResetExperiment();
         foreach (var slot in _slots)
             if (slot != null) Destroy(slot.gameObject);
         _slots.Clear();
@@ -627,7 +633,13 @@ public class CompoundSelectionPanel : MonoBehaviour
     /// <summary>선택 확정. XR 컨트롤러/핸드 트래킹 인터랙터에서도 이 메서드를 호출하면 된다.</summary>
     public void SelectSlot(CompoundSlot slot)
     {
-        if (!AcceptsInput || slot == null) return;
+        if (!CanStartExperiment || slot == null || !_slots.Contains(slot)) return;
+        Experiment.Inspect(this, slot);
+    }
+
+    public void StartExperiment(CompoundSlot slot)
+    {
+        if (!CanStartExperiment || slot == null || !_slots.Contains(slot)) return;
         OnCompoundChosen?.Invoke(slot);
     }
 }

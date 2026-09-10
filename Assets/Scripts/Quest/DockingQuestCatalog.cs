@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -87,13 +87,13 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private void OnEnable()
     {
-        if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished += HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted += ApplyForSessionQuest;
     }
 
     private void OnDisable()
     {
-        if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished -= HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted -= ApplyForSessionQuest;
     }
 
@@ -218,12 +218,12 @@ public class DockingQuestCatalog : MonoBehaviour
         OnQuestStarted?.Invoke(def);
     }
 
-    private void HandleDockingFinished(DockingResult result)
+    private void HandleVerificationFinished()
     {
         // 세션(인트로 선택)이 있는 씬에서는 진행 순서를 세션이 소유한다 —
         // 카탈로그가 멋대로 다음 도킹 퀘스트로 구조를 갈아치우면 안 된다.
         if (questSession != null) return;
-        if (!result.IsSuccess || !autoAdvanceOnSuccess) return;
+        if (!autoAdvanceOnSuccess) return;
 
         if (CurrentIndex + 1 < _quests.Count)
             StartCoroutine(AdvanceAfterDelay(CurrentIndex + 1));
