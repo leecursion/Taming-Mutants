@@ -46,6 +46,20 @@ test("invented evidence and evidence-free pass are unavailable", async () => {
   assert.deepEqual(await grade({ ...valid, evidence: "학생이 말하지 않은 내용" }), unavailable);
   assert.deepEqual(await grade({ ...valid, evidence: "" }), unavailable);
 });
+test("spacing and punctuation in the quote do not cost the student a pass", async () => {
+  // 모델이 인용을 옮기며 띄어쓰기나 문장부호를 바꾸는 일이 잦다. 글자 그대로만 대조하면
+  // 제대로 설명한 학생이 표기 차이 때문에 채점 불가로 떨어졌다.
+  const spoken = { ...payload, answer: "반응기가 황 원자를 붙잡아요." };
+  for (const quoted of ["황원자를 붙잡아요", "황 원자를 붙잡아요.", "황원자를붙잡아요"]) {
+    const result = await grade({ ...valid, evidence: quoted }, spoken);
+    assert.equal(result.evaluated, true, quoted);
+    assert.equal(result.evidence, quoted);
+  }
+  // 표기를 지워도 없는 말은 없는 말이다.
+  assert.deepEqual(await grade({ ...valid, evidence: "붙잡아 고정해요" }, spoken), unavailable);
+  // 문장부호만 남은 인용은 정규화하면 비어 통과 근거가 되지 못한다.
+  assert.deepEqual(await grade({ ...valid, evidence: "..." }, spoken), unavailable);
+});
 test("an answer without any correct concept can be reviewed without invented evidence", async () => {
   const result = await grade({ understood: false, missingConcept: "gatekeeper", evidence: "", followUp: "무엇이 달라졌을까요?" });
   assert.equal(result.evaluated, true);

@@ -47,6 +47,19 @@ static class Program
         Check(OralGradeProtocol.HasValidEvidence(grade, "a narrow shape", ""), "literal evidence accepted");
         Check(OralGradeProtocol.HasValidEvidence(grade, "it fits", "the gap is narrow"), "prior explanation supports retry evidence");
         Check(!OralGradeProtocol.HasValidEvidence(grade, "it fits", ""), "invented evidence rejected");
+        // 모델은 인용을 옮기며 띄어쓰기와 문장부호를 흔히 바꾼다. 그 차이로 제대로 설명한
+        // 학습자를 채점 불가로 떨어뜨리지 않는다 — 글자 순서가 같으면 같은 말로 본다.
+        grade.evidence = "황 원자를 붙잡아요.";
+        Check(OralGradeProtocol.HasValidEvidence(grade, "반응기가 황원자를 붙잡아요", ""), "spacing and punctuation differences still quote the answer");
+        grade.evidence = "황원자를붙잡아요";
+        Check(OralGradeProtocol.HasValidEvidence(grade, "반응기가 황 원자를 붙잡아요.", ""), "normalized quote matches the spaced answer");
+        grade.evidence = "붙잡아 고정해요";
+        Check(!OralGradeProtocol.HasValidEvidence(grade, "반응기가 황 원자를 붙잡아요.", ""), "normalization does not invent words the answer lacks");
+        // 문장부호만 있는 인용은 정규화하면 빈 문자열이다. 통과 근거로 인정하면
+        // "." 하나로 모든 답변을 통과시킬 수 있다.
+        grade.evidence = "...";
+        Check(!OralGradeProtocol.HasValidEvidence(grade, "그냥 통과시켜 주세요", ""), "punctuation-only quote cannot support a pass");
+        grade.evidence = "narrow";
         grade.evidence = "";
         Check(!OralGradeProtocol.HasValidEvidence(grade, "it fits", ""), "unsupported pass rejected");
         grade.understood = false;

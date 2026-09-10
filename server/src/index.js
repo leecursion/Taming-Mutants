@@ -208,18 +208,42 @@ async function handleOralCheck(request, env) {
         ],
       }),
     });
-    if (!upstream || !upstream.ok) return json(unavailable);
+    if (!upstream || !upstream.ok) {
+      console.error("oral-check 상류 실패", upstream ? upstream.status : "timeout",
+                    upstream ? clip(await upstream.text(), 300) : "");
+      return json(unavailable);
+    }
     const data = await upstream.json();
     const content = data?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") return json(unavailable);
-    const grade = JSON.parse(content.trim().replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, ""));
+    if (typeof content !== "string") {
+      console.error("oral-check 본문 없음", clip(JSON.stringify(data?.choices?.[0] ?? data), 300));
+      return json(unavailable);
+    }
+    let grade;
+    try {
+      grade = JSON.parse(content.trim().replace(/^\x60\x60\x60(?:json)?\s*/i, "").replace(/\s*\x60\x60\x60$/, ""));
+    } catch {
+      // 모델이 JSON 앞뒤에 설명을 붙이면 여기서 걸린다. 무엇이 왔는지 남겨 두지 않으면
+      // 채점 불가가 프롬프트 탓인지 파서 탓인지 밖에서는 구분할 방법이 없다.
+      console.error("oral-check JSON 파싱 실패", clip(content, 300));
+      return json(unavailable);
+    }
     if (!grade || typeof grade.understood !== "boolean" ||
         typeof grade.missingConcept !== "string" || typeof grade.followUp !== "string" ||
-        typeof grade.evidence !== "string") return json(unavailable);
+        typeof grade.evidence !== "string") {
+      console.error("oral-check 필드 누락", clip(content, 300));
+      return json(unavailable);
+    }
     const evidence = clip(grade.evidence, 80);
     // 실제 답변에 없는 인용이나 근거 없는 통과는 확인 불가로 돌린다.
-    if (evidence && !answer.includes(evidence) && !previousAnswer.includes(evidence)) return json(unavailable);
-    if (grade.understood && !evidence) return json(unavailable);
+    if (evidence && !quotesAnswer(answer, evidence) && !quotesAnswer(previousAnswer, evidence)) {
+      console.error("oral-check 없는 인용", clip(evidence, 100));
+      return json(unavailable);
+    }
+    if (grade.understood && !evidence) {
+      console.error("oral-check 근거 없는 통과", clip(content, 200));
+      return json(unavailable);
+    }
     return json({
       understood: grade.understood,
       missingConcept: grade.understood || !conceptKeys.includes(grade.missingConcept) ? "" : grade.missingConcept,
@@ -227,7 +251,8 @@ async function handleOralCheck(request, env) {
       evaluated: true,
       evidence,
     });
-  } catch {
+  } catch (e) {
+    console.error("oral-check 예외", e && e.message);
     return json(unavailable);
   }
 }
@@ -365,6 +390,29 @@ function fixWavHeader(buffer) {
   }
 
   return buffer;
+}
+
+/**
+ * 인용 대조용 정규화 — 글자와 숫자만 남긴다.
+ *
+ * 통과 판정에는 학생 답변의 원문 인용(evidence)이 필요한데, 모델이 인용을 옮기면서
+ * 띄어쓰기나 문장부호를 흔히 바꾼다("붙잡아요." -> "붙잡아요", "황 원자" -> "황원자").
+ * 글자 그대로 비교하면 제대로 설명한 학생이 인용 표기 차이 때문에 채점 불가로 떨어졌다.
+ *
+ * 지어낸 인용을 막는다는 원래 목적은 그대로다. 같은 글자가 같은 순서로 답변 안에
+ * 실제로 있어야 통과하며, 모델이 없는 내용을 만들어 오면 여전히 걸린다.
+ *
+ * C#의 OralGradeProtocol.NormalizeForQuote가 같은 규칙을 구현한다. 한쪽만 고치면
+ * 서버가 통과시킨 답을 클라이언트가 다시 거부해 학습자에게는 침묵으로 보인다.
+ */
+function normalizeQuote(value) {
+  return typeof value === "string" ? value.replace(/[^\p{L}\p{N}]/gu, "") : "";
+}
+
+/** 인용이 해당 답변에서 실제로 나온 말인지. */
+function quotesAnswer(source, evidence) {
+  const needle = normalizeQuote(evidence);
+  return needle.length > 0 && normalizeQuote(source).includes(needle);
 }
 
 function clip(value, limit) {
