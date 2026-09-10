@@ -104,10 +104,8 @@ public class StructureLevelController : MonoBehaviour
     /// <summary>
     /// true인 동안 클릭으로 단계를 내려가지 못한다.
     ///
-    /// 비서가 설명을 끝내기 전에 사용자가 구조를 눌러 다음 단계로 넘어가면, 방금 시작한 해설이
-    /// 곧바로 다음 단계 해설로 덮여 아무것도 못 듣게 된다. 누가 이 값을 켜고 끄는지는
-    /// 여기서 알 필요가 없다 — 이 컴포넌트는 "지금 입력을 받는가"만 본다.
-    /// (지금은 <see cref="AIAssistantBrain"/>이 말하는 동안 켠다.)
+    /// 외부 연출에서 구조 탐색 자체를 잠가야 할 때 사용한다.
+    /// 비서 대사 재생은 구조 탐색을 잠그지 않는다.
     /// </summary>
     public bool InputLocked
     {
@@ -455,26 +453,50 @@ public class StructureLevelController : MonoBehaviour
             UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject()) return;
         Vector2 mousePos = Mouse.current.position.ReadValue();
         Ray ray = targetCamera.ScreenPointToRay(mousePos);
-        if (!Physics.Raycast(ray, out RaycastHit hit, maxRayDistance)) return;
+        TryAdvanceAtRay(ray);
+    }
 
-        if (CurrentLevel == ViewLevel.Ribbon)
+    /// <summary>Only this structure's visible segments participate; decorative colliders cannot steal a click.</summary>
+    public bool TryAdvanceAtRay(Ray ray)
+    {
+        if (!isActiveAndEnabled || InputLocked || CurrentLevel == ViewLevel.AminoAcid) return false;
+        RaycastHit[] hits = Physics.RaycastAll(ray, maxRayDistance, ~0, QueryTriggerInteraction.Ignore);
+        System.Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+        foreach (RaycastHit hit in hits)
         {
-            var ribbonInfo = hit.collider.GetComponent<RibbonSegmentInfo>();
-            if (ribbonInfo == null) return;
-
-            int regionIndex = FindHelixRegionIndex(ribbonInfo.residueId);
-            if (regionIndex < 0) return; // 이 구간엔 미리 지정된 Helix가 없음
-
-            _activeHelixIndex = regionIndex;
-            SetLevel(ViewLevel.Helix);
-        }
-        else if (CurrentLevel == ViewLevel.Helix)
-        {
+            if (!hit.collider.transform.IsChildOf(transform)) continue;
+            if (CurrentLevel == ViewLevel.Ribbon)
+            {
+                var ribbonInfo = hit.collider.GetComponent<RibbonSegmentInfo>();
+                if (ribbonInfo == null) continue;
+                int regionIndex = FindNearestAvailableRegion(ribbonInfo.residueId);
+                if (regionIndex < 0) return false;
+                _activeHelixIndex = regionIndex;
+                SetLevel(ViewLevel.Helix);
+                return true;
+            }
             var helixInfo = hit.collider.GetComponent<HelixSegmentInfo>();
-            if (helixInfo == null) return;
-
+            if (helixInfo == null) continue;
+            _activeHelixIndex = helixInfo.helixRegionIndex;
             SetLevel(ViewLevel.AminoAcid);
+            return true;
         }
+        return false;
+    }
+
+    private int FindNearestAvailableRegion(int residueId)
+    {
+        int best = -1;
+        int bestDistance = int.MaxValue;
+        for (int i = 0; i < helixRegions.Count && i < _helixRegionRoots.Count; i++)
+        {
+            if (_helixRegionRoots[i] == null || _helixRegionRoots[i].childCount == 0) continue;
+            var region = helixRegions[i];
+            int distance = residueId < region.startResId ? region.startResId - residueId :
+                residueId > region.endResId ? residueId - region.endResId : 0;
+            if (distance < bestDistance) { best = i; bestDistance = distance; }
+        }
+        return best;
     }
 
     private int FindHelixRegionIndex(int residueId)
@@ -511,6 +533,8 @@ public class StructureLevelController : MonoBehaviour
             _helixRegionRoots[i].gameObject.SetActive(active);
         }
 
+        ApplyAminoAcidOnlyVisuals(level);
+
         if (level == ViewLevel.AminoAcid)
             _proteinLoader.SetVisibleResidues(BuildAminoAcidResidueSet()); // null이면 전체 표시
         else
@@ -522,6 +546,28 @@ public class StructureLevelController : MonoBehaviour
         ActiveRegionStructure = ComputeActiveRegionStructure();
 
         OnLevelChanged?.Invoke(level);
+    }
+
+    /// <summary>
+    /// <see cref="AminoAcidOnlyVisual"/> 표식이 붙은 연출 오브젝트를 단계에 맞춰 켜고 끈다.
+    ///
+    /// 목록을 들고 있지 않고 매번 씬을 훑는다. 레벨 전환은 사용자가 클릭할 때만 일어나는 드문
+    /// 사건이라 비용이 문제되지 않고, 등록/해제를 관리하지 않으니 파괴된 오브젝트를 붙잡거나
+    /// 등록을 빠뜨려 생기는 실수가 아예 없다.
+    /// </summary>
+    private void ApplyAminoAcidOnlyVisuals(ViewLevel level)
+    {
+        bool visible = level == ViewLevel.AminoAcid;
+
+        // 꺼져 있는 것도 찾아야 다시 켤 수 있다.
+        var marked = FindObjectsByType<AminoAcidOnlyVisual>(
+            FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        foreach (AminoAcidOnlyVisual visual in marked)
+        {
+            if (visual == null) continue;
+            if (visual.gameObject.activeSelf != visible) visual.gameObject.SetActive(visible);
+        }
     }
 
     /// <summary>
@@ -605,6 +651,40 @@ public class StructureLevelController : MonoBehaviour
         return set;
     }
 
+}
+
+/// <summary>
+/// 원자(아미노산) 단계에서만 보여야 하는 연출 오브젝트에 붙이는 표식.
+///
+/// 레벨 전환이 알아서 끄는 것은 <see cref="ProteinLoader"/>가 스폰한 원자·결합뿐이다.
+/// 각 사건의 컨트롤러가 구조 앵커 옆에 직접 만든 오브젝트 — 열안정성의 응집 입자, CFTR의
+/// QC 입자·게이트, p53 마무리의 DNA/사량체, CFTR 마무리의 상피세포 장면 — 은 그 대상이
+/// 아니라서, 놓아두면 '이전'으로 올라간 나선/리본 화면에 원자 단계의 잔해로 남는다.
+///
+/// 컨트롤러마다 OnLevelChanged를 구독해 각자 끄게 할 수도 있다. 실제로 그렇게 해 봤는데,
+/// 그러려면 컨트롤러가 저마다 StructureLevelController 참조를 스스로 찾아 들고 있어야 하고
+/// 그 참조가 하나라도 비면 <b>그 사건에서만 조용히</b> 잔해가 남는다 — 화면을 봐야만 알 수
+/// 있는 종류의 실패다. 만드는 쪽은 표식만 붙이고, 켜고 끄는 판단은 단계를 실제로 아는
+/// <see cref="StructureLevelController"/> 한 곳이 맡는다.
+/// </summary>
+public class AminoAcidOnlyVisual : MonoBehaviour
+{
+    /// <summary>
+    /// 표식을 붙이고, 지금 단계에 맞춰 표시 상태를 곧바로 맞춘다.
+    ///
+    /// 만들어지는 시점이 항상 원자 단계라는 보장이 없다 — 예컨대 CFTR의 QC 입자는 리본
+    /// 단계에서 재생되는 인트로 끝에 생긴다. 다음 레벨 전환까지 기다리면 그동안 리본 위를
+    /// 떠다닌다.
+    /// </summary>
+    public static void Mark(GameObject go, StructureLevelController controller)
+    {
+        if (go == null) return;
+        if (go.GetComponent<AminoAcidOnlyVisual>() == null) go.AddComponent<AminoAcidOnlyVisual>();
+
+        if (controller == null) return;
+        bool visible = controller.CurrentLevel == StructureLevelController.ViewLevel.AminoAcid;
+        if (go.activeSelf != visible) go.SetActive(visible);
+    }
 }
 
 /// <summary>리본 조각 클릭 판별용 — 어느 잔기의 조각인지 표시.</summary>

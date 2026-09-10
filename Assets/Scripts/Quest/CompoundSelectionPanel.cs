@@ -154,6 +154,25 @@ public class CompoundSelectionPanel : MonoBehaviour
     private readonly List<CompoundSlot> _slots = new List<CompoundSlot>();
     private Transform _contentRoot;   // 슬롯/라벨이 모두 이 아래 — 레벨 연동 표시 토글용
     private CompoundSlot _hovered;
+    private CompoundSlot _pressedSlot;
+    private float _pressedAt;
+    private bool _holdCompleted;
+    private const float InspectionHoldSeconds = 0.6f;
+
+    private void CancelInspectionHold()
+    {
+        if (_pressedSlot != null && _pressedSlot.TryGetComponent<CompoundInspectionEffects>(out var fx))
+            fx.SetProgress(0f, boxSize);
+        _pressedSlot = null;
+        _holdCompleted = false;
+    }
+
+    private void OnApplicationFocus(bool focused) { if (!focused) CancelInspectionHold(); }
+    private LabExperimentUI _experiment;
+    public LabExperimentUI Experiment => _experiment != null ? _experiment :
+        (_experiment = gameObject.AddComponent<LabExperimentUI>());
+    public bool CanStartExperiment => AcceptsInput && isActiveAndEnabled &&
+        (_contentRoot == null || _contentRoot.gameObject.activeSelf);
     private TextMesh _resultText;
     private TextMesh _affinityText;
     private Coroutine _loadRoutine;
@@ -196,6 +215,7 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void OnDisable()
     {
+        CancelInspectionHold();
         if (levelController != null) levelController.OnLevelChanged -= HandleLevelChanged;
         if (proteinLoader != null) proteinLoader.OnLoaded -= HandleProteinLoaded;
     }
@@ -222,6 +242,7 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void HandleProteinLoaded(ProteinLoader.ProteinData data)
     {
+        _layoutAtoms = null;
         if (autoPlace) StartCoroutine(PlaceNextFrame());
     }
 
@@ -253,12 +274,20 @@ public class CompoundSelectionPanel : MonoBehaviour
     {
         if (targetCamera == null) return;
 
+        if (!targetCamera.stereoEnabled)
+        {
+            _desktopRightEdge = CandidateRightEdge();
+            PlaceDesktopCandidates();
+            FitAboveExperimentNotebook();
+            return;
+        }
         if (zoomOverrideActive)
         {
             // 0 이하면 평소와 같은 크기로 둔다. 클로즈업 중에도 카메라 기준 오프셋은 그대로라
             // 화면에서 보이는 크기가 달라질 이유가 없다 — 여기에 별도 배율을 주면 그 사건에서만
             // 판넬이 유독 커 보인다(사건 5에서 실제로 그렇게 보였다).
-            PlaceBesideUser(zoomOverridePanelScale > 0f ? zoomOverridePanelScale : panelScale);
+            PlaceBesideUser(zoomOverrideActive && zoomOverridePanelScale > 0f ? zoomOverridePanelScale : panelScale);
+            FitAboveExperimentNotebook();
             return;
         }
 
@@ -404,6 +433,147 @@ public class CompoundSelectionPanel : MonoBehaviour
         transform.rotation = Quaternion.LookRotation(away.normalized) * Quaternion.Euler(0f, -diagonalYaw, 0f);
     }
 
+    // Keep a modest camera-relative slant; screen fitting measures the rotated grid afterward.
+    private float _desktopRightEdge = .5f;
+    private CftrHUD _layoutCftrHud;
+    private bool _layoutHudResolved;
+    private ThermalStabilityHUD _layoutThermalHud;
+    private readonly Vector3[] _hudCorners = new Vector3[4];
+    private float DesktopLeftEdge
+    {
+        get
+        {
+            float edge = Mathf.Max(.02f, Screen.safeArea.xMin / Mathf.Max(Screen.width, 1));
+            edge = Mathf.Max(edge, HudRightEdge(_layoutThermalHud != null ? _layoutThermalHud.LayoutRect : null));
+            edge = Mathf.Max(edge, HudRightEdge(_layoutCftrHud != null ? _layoutCftrHud.LayoutRect : null));
+            return edge;
+        }
+    }
+
+    private float HudRightEdge(RectTransform rect)
+    {
+        if (rect == null || !rect.gameObject.activeInHierarchy) return 0f;
+        rect.GetWorldCorners(_hudCorners);
+        float right = 0f;
+        foreach (Vector3 corner in _hudCorners) right = Mathf.Max(right, corner.x);
+        return (right + 20f) / Mathf.Max(Screen.width, 1);
+    }
+
+    private void PlaceDesktopCandidates()
+    {
+        float depth = Mathf.Max(.9f, targetCamera.nearClipPlane + .5f);
+        float height = targetCamera.orthographic ? 2f * targetCamera.orthographicSize :
+            2f * depth * Mathf.Tan(targetCamera.fieldOfView * Mathf.Deg2Rad * .5f);
+        float availableHeight = 1f - edgeClampPadding - LabExperimentUI.ReservedBottomViewportHeight;
+        if (!_layoutHudResolved)
+        {
+            _layoutCftrHud = FindFirstObjectByType<CftrHUD>(FindObjectsInactive.Include);
+            _layoutThermalHud = FindFirstObjectByType<ThermalStabilityHUD>(FindObjectsInactive.Include);
+            _layoutHudResolved = true;
+        }
+        float availableWidth = Mathf.Max(.05f, _desktopRightEdge - DesktopLeftEdge);
+        float fit = Mathf.Min(height * availableHeight / Mathf.Max(_outerSize.y + .12f, boxSize),
+            height * targetCamera.aspect * availableWidth / Mathf.Max(_outerSize.x + .08f, boxSize));
+        // Use the authored diagonal angle without adding the off-center viewing angle again.
+        transform.rotation = targetCamera.transform.rotation * Quaternion.Euler(0f, -diagonalYaw, 0f);
+        transform.localScale = Vector3.one * Mathf.Max(.01f, fit * .92f);
+        transform.position = targetCamera.ViewportToWorldPoint(new Vector3(
+            (DesktopLeftEdge + _desktopRightEdge) * .5f,
+            (LabExperimentUI.ReservedBottomViewportHeight + 1f - edgeClampPadding) * .5f, depth));
+    }
+
+    private AtomInfo[] _layoutAtoms;
+    private float CandidateRightEdge()
+    {
+        float edge = 1f - edgeClampPadding;
+        bool found = false;
+        if (proteinLoader == null) return .5f;
+        if (_layoutAtoms == null) _layoutAtoms = proteinLoader.GetComponentsInChildren<AtomInfo>(true);
+        foreach (AtomInfo atom in _layoutAtoms)
+        {
+            if (atom == null || !atom.gameObject.activeInHierarchy) continue;
+            if (!atom.TryGetComponent<Renderer>(out var renderer) || !renderer.enabled) continue;
+            Bounds b = renderer.bounds;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 point = b.center + Vector3.Scale(b.extents, new Vector3(
+                    (i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f));
+                Vector3 v = targetCamera.WorldToViewportPoint(point);
+                if (v.z > targetCamera.nearClipPlane && v.y > LabExperimentUI.ReservedBottomViewportHeight && v.y < 1f)
+                {
+                    edge = Mathf.Min(edge, v.x - .025f);
+                    found = true;
+                }
+            }
+        }
+        return found ? Mathf.Max(.02f, edge) : .5f;
+    }
+
+    // Fit the whole grid, including the last row's two-line labels, above the notebook.
+    // PlaceBesideUser restores the authored scale first, so fitting cannot accumulate shrinkage.
+    private void FitAboveExperimentNotebook()
+    {
+        if (_slots.Count == 0 || targetCamera.stereoEnabled) return;
+        float minY = LabExperimentUI.ReservedBottomViewportHeight;
+        float maxY = 1f - edgeClampPadding;
+        float minX = DesktopLeftEdge;
+        float maxX = Mathf.Max(minX + .01f, _desktopRightEdge);
+        float available = maxY - minY;
+        if (available <= 0f) return;
+
+        for (int pass = 0; pass < 6; pass++)
+        {
+            float bottom = float.PositiveInfinity, top = float.NegativeInfinity;
+            float left = float.PositiveInfinity, right = float.NegativeInfinity;
+            float farDepth = 0f;
+            foreach (CompoundSlot slot in _slots)
+            {
+                if (slot == null) continue;
+                // Molecules (including inspection enlargement) and floor glow fit inside this box.
+                Bounds bounds = new Bounds(Vector3.zero, Vector3.one * boxSize * 1.12f);
+                EncapsulateScreenBounds(slot.transform, bounds, ref left, ref right, ref bottom, ref top, ref farDepth);
+                Transform label = slot.transform.Find("Label");
+                if (label != null && label.TryGetComponent<Renderer>(out var renderer))
+                    EncapsulateScreenBounds(null, renderer.bounds, ref left, ref right, ref bottom, ref top, ref farDepth);
+            }
+            if (farDepth <= 0f || float.IsInfinity(bottom)) return;
+            float height = top - bottom;
+            float fit = Mathf.Min(available / Mathf.Max(height, .0001f),
+                (maxX - minX) / Mathf.Max(right - left, .0001f));
+            // Grow into unused space as well as shrink: measure the actual rotated grid and labels.
+            if (fit < .995f || (pass == 0 && fit > 1.01f))
+            {
+                transform.localScale *= fit * 0.98f;
+                continue;
+            }
+            // Top-align every grid, regardless of whether this quest has four or five candidates.
+            float shift = maxY - top;
+            float shiftX = left < minX ? minX - left : right > maxX ? maxX - right : 0f;
+            if (Mathf.Abs(shift) < 0.0001f && Mathf.Abs(shiftX) < 0.0001f) break;
+            Vector3 from = targetCamera.ViewportToWorldPoint(new Vector3(0.5f, 0.5f, farDepth));
+            Vector3 to = targetCamera.ViewportToWorldPoint(new Vector3(0.5f + shiftX, 0.5f + shift, farDepth));
+            transform.position += to - from;
+        }
+    }
+
+    private void EncapsulateScreenBounds(Transform localSpace, Bounds bounds,
+        ref float left, ref float right, ref float bottom, ref float top, ref float farDepth)
+    {
+        for (int i = 0; i < 8; i++)
+        {
+            Vector3 corner = bounds.center + Vector3.Scale(bounds.extents, new Vector3(
+                (i & 1) == 0 ? -1f : 1f, (i & 2) == 0 ? -1f : 1f, (i & 4) == 0 ? -1f : 1f));
+            if (localSpace != null) corner = localSpace.TransformPoint(corner);
+            Vector3 point = targetCamera.WorldToViewportPoint(corner);
+            if (point.z <= targetCamera.nearClipPlane) continue;
+            left = Mathf.Min(left, point.x);
+            right = Mathf.Max(right, point.x);
+            bottom = Mathf.Min(bottom, point.y);
+            top = Mathf.Max(top, point.y);
+            farDepth = Mathf.Max(farDepth, point.z);
+        }
+    }
+
     /// <summary>
     /// ThermalStabilityController처럼 카메라를 구조의 좁은 부위로 클로즈업시키는 연출을 트는 쪽이
     /// 연출 시작/종료에 맞춰 호출한다. true면 "구조 옆 사선" 배치를 잠시 멈추고 카메라 옆에
@@ -432,6 +602,8 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void ClearSlots()
     {
+        CancelInspectionHold();
+        if (_experiment != null) _experiment.ResetExperiment();
         foreach (var slot in _slots)
             if (slot != null) Destroy(slot.gameObject);
         _slots.Clear();
@@ -450,8 +622,7 @@ public class CompoundSelectionPanel : MonoBehaviour
 
         for (int i = 0; i < files.Count; i++)
         {
-            // Path.Combine은 Windows에서 '\'를 붙여 Android jar:file:// URL을 깨뜨리므로 '/'로 직접 연결
-            string url = $"{Application.streamingAssetsPath}/{compoundsFolder}/{files[i]}";
+            string url = StreamingAssetsUrl.For($"{compoundsFolder}/{files[i]}");
             using (UnityWebRequest req = UnityWebRequest.Get(url))
             {
                 yield return req.SendWebRequest();
@@ -601,8 +772,13 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void Update()
     {
-        if (!AcceptsInput || targetCamera == null || Mouse.current == null) return;
-        if (_contentRoot != null && !_contentRoot.gameObject.activeSelf) return; // 숨김 상태에선 입력 무시
+        if (!CanStartExperiment || targetCamera == null || Mouse.current == null)
+        {
+            CancelInspectionHold();
+            if (_hovered != null) _hovered.SetHovered(false);
+            _hovered = null;
+            return;
+        }
 
         Ray ray = targetCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
         CompoundSlot hit = null;
@@ -618,16 +794,45 @@ public class CompoundSelectionPanel : MonoBehaviour
 
         bool overUI = UnityEngine.EventSystems.EventSystem.current != null &&
                       UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
-        if (hit != null && !overUI && Mouse.current.leftButton.wasPressedThisFrame)
+        if (overUI || hit != _pressedSlot) CancelInspectionHold();
+        if (hit != null && _slots.Contains(hit) && !overUI && Mouse.current.leftButton.wasPressedThisFrame)
         {
-            SelectSlot(hit);
+            _pressedSlot = hit;
+            _pressedAt = Time.unscaledTime;
+        }
+        if (_pressedSlot != null && Mouse.current.leftButton.isPressed && !_holdCompleted)
+        {
+            float progress = Mathf.Clamp01((Time.unscaledTime - _pressedAt) / InspectionHoldSeconds);
+            var fx = _pressedSlot.GetComponent<CompoundInspectionEffects>();
+            if (fx == null) fx = _pressedSlot.gameObject.AddComponent<CompoundInspectionEffects>();
+            fx.SetProgress(progress, boxSize);
+            if (progress >= 1f)
+            {
+                SelectSlot(_pressedSlot);
+                fx.SetProgress(0f, boxSize);
+                _holdCompleted = true;
+            }
+        }
+        if (Mouse.current.leftButton.wasReleasedThisFrame)
+        {
+            // Preserve short-click inspection; a longer incomplete hold is a cancellation.
+            if (_pressedSlot != null && !_holdCompleted && Time.unscaledTime - _pressedAt < .2f)
+                SelectSlot(_pressedSlot);
+            CancelInspectionHold();
         }
     }
 
     /// <summary>선택 확정. XR 컨트롤러/핸드 트래킹 인터랙터에서도 이 메서드를 호출하면 된다.</summary>
     public void SelectSlot(CompoundSlot slot)
     {
-        if (!AcceptsInput || slot == null) return;
+        if (!CanStartExperiment || slot == null || !_slots.Contains(slot)) return;
+        Experiment.Inspect(this, slot);
+        MutationExperimentEffects.Play(slot.transform, Vector3.zero, boxSize * .48f, "scan");
+    }
+
+    public void StartExperiment(CompoundSlot slot)
+    {
+        if (!CanStartExperiment || slot == null || !_slots.Contains(slot)) return;
         OnCompoundChosen?.Invoke(slot);
     }
 }

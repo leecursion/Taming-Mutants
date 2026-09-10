@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -87,22 +87,20 @@ public class DockingQuestCatalog : MonoBehaviour
 
     private void OnEnable()
     {
-        if (dockingController != null) dockingController.OnDockingFinished += HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished += HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted += ApplyForSessionQuest;
     }
 
     private void OnDisable()
     {
-        if (dockingController != null) dockingController.OnDockingFinished -= HandleDockingFinished;
+        if (dockingController != null) dockingController.OnVerificationFinished -= HandleVerificationFinished;
         if (questSession != null) questSession.OnQuestStarted -= ApplyForSessionQuest;
     }
 
     private IEnumerator Start()
     {
-        string baseUrl = $"{Application.streamingAssetsPath}/{questsFolder}";
-
         QuestCatalogData index = null;
-        yield return Fetch($"{baseUrl}/{indexFile}",
+        yield return Fetch($"{questsFolder}/{indexFile}",
             text => index = JsonUtility.FromJson<QuestCatalogData>(text));
         if (index == null || index.quests == null || index.quests.Count == 0)
         {
@@ -113,7 +111,7 @@ public class DockingQuestCatalog : MonoBehaviour
         foreach (string file in index.quests)
         {
             DockingQuestDefinition def = null;
-            yield return Fetch($"{baseUrl}/{file}",
+            yield return Fetch($"{questsFolder}/{file}",
                 text => def = JsonUtility.FromJson<DockingQuestDefinition>(text));
             if (def != null) _quests.Add(def);
         }
@@ -130,8 +128,10 @@ public class DockingQuestCatalog : MonoBehaviour
         }
     }
 
-    private IEnumerator Fetch(string url, Action<string> onSuccess)
+    /// <summary>StreamingAssets 기준 상대 경로를 받아 읽어온다.</summary>
+    private IEnumerator Fetch(string relativePath, Action<string> onSuccess)
     {
+        string url = StreamingAssetsUrl.For(relativePath);
         using (UnityWebRequest req = UnityWebRequest.Get(url))
         {
             yield return req.SendWebRequest();
@@ -218,12 +218,12 @@ public class DockingQuestCatalog : MonoBehaviour
         OnQuestStarted?.Invoke(def);
     }
 
-    private void HandleDockingFinished(DockingResult result)
+    private void HandleVerificationFinished()
     {
         // 세션(인트로 선택)이 있는 씬에서는 진행 순서를 세션이 소유한다 —
         // 카탈로그가 멋대로 다음 도킹 퀘스트로 구조를 갈아치우면 안 된다.
         if (questSession != null) return;
-        if (!result.IsSuccess || !autoAdvanceOnSuccess) return;
+        if (!autoAdvanceOnSuccess) return;
 
         if (CurrentIndex + 1 < _quests.Count)
             StartCoroutine(AdvanceAfterDelay(CurrentIndex + 1));

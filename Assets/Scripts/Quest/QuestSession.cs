@@ -126,6 +126,14 @@ public class QuestSession : MonoBehaviour
         EnterStage(finished + 1);
     }
 
+    /// <summary>현재 사건의 기능 검증이 끝난 뒤 호출. 현장 카메라를 유지한 채 완료한다.</summary>
+    public void CompleteVerifiedQuest(string questId)
+    {
+        if (!IsRunning || CurrentQuest.questId != questId) return;
+        CurrentStage = LastStage;
+        CompleteCurrentStage();
+    }
+
     /// <summary>단계를 건너뛰거나 되돌릴 때 쓴다. (디버그, 또는 퀘스트 재개)</summary>
     public void JumpToStage(QuestManagerSpatialUI.QuestStage stage)
     {
