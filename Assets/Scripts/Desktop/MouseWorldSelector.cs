@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.EventSystems;
 
 /// <summary>
 /// F-04.1 시선 추적 기반 활성 부위 탐색, F-02.4 상황 맥락 브리핑의 PC 개발용 대체.
@@ -50,6 +51,13 @@ public class MouseWorldSelector : MonoBehaviour
     private void TrySelectAtObjectUnderMouse()
     {
         if (targetCamera == null || Mouse.current == null) return;
+
+        // UI 위를 클릭한 것이라면 뒤에 있는 구조까지 함께 고르지 않는다.
+        //
+        // 구술 확인 패널의 입력창을 클릭할 때 그 뒤에 변이 잔기가 있으면 선택 이벤트가
+        // 함께 발생해, 답을 쓰는 도중 비서가 그 잔기 설명을 시작한다. 버튼을 누를 때마다
+        // 같은 일이 일어나므로 퀴즈 밖에서도 마찬가지다.
+        if (EventSystem.current != null && EventSystem.current.IsPointerOverGameObject()) return;
 
         Ray ray = targetCamera.ScreenPointToRay(Mouse.current.position.ReadValue());
         if (!Physics.Raycast(ray, out RaycastHit hit, maxRayDistance, selectableLayers)) return;

@@ -41815,7 +41815,6 @@ GameObject:
   - component: {fileID: 1999102667}
   - component: {fileID: 1999102666}
   - component: {fileID: 1999102665}
-  - component: {fileID: 1999102664}
   - component: {fileID: 1999102669}
   m_Layer: 0
   m_Name: AIAssistant
@@ -41824,30 +41823,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 0
---- !u!114 &1999102664
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1999102663}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 81cd8190922c2e043849c403889e74c9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  visual: {fileID: 1999102666}
-  bubble: {fileID: 831819909}
-  showOnScreenLabel: 1
-  sampleMessages:
-  - "EGFR \uB2E8\uBC31\uC9C8\uC758 \uD0A4\uB098\uC544\uC81C \uB3C4\uBA54\uC778\uC744
-    \uBD88\uB7EC\uC654\uC5B4\uC694. \uB9AC\uBCF8\uC744 \uD074\uB9AD\uD558\uBA74 \uB098\uC120
-    \uAD6C\uC870\uB85C \uB4E4\uC5B4\uAC08 \uC218 \uC788\uC2B5\uB2C8\uB2E4."
-  - "858\uBC88 \uC794\uAE30\uAC00 \uB958\uC2E0\uC5D0\uC11C \uC544\uB974\uAE30\uB2CC\uC73C\uB85C
-    \uBC14\uB00C\uC5C8\uB124\uC694. \uD3D0\uC554\uC5D0\uC11C \uC790\uC8FC \uBCF4\uC774\uB294
-    \uD65C\uC131\uD654 \uB3CC\uC5F0\uBCC0\uC774\uC785\uB2C8\uB2E4."
-  - "\uC774 \uBD80\uC704\uB294 pLDDT\uAC00 70 \uC544\uB798\uC608\uC694. \uC608\uCE21
-    \uC2E0\uB8B0\uB3C4\uAC00 \uB0AE\uC73C\uB2C8 \uD574\uC11D\uC5D0 \uC8FC\uC758\uD558\uC138\uC694."
 --- !u!114 &1999102665
 MonoBehaviour:
   m_ObjectHideFlags: 0

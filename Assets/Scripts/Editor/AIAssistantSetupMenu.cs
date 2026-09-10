@@ -187,12 +187,16 @@ public static class AIAssistantSetupMenu
 
         // 말풍선은 비서 스케일이 아니라 "읽을 수 있는 크기"로 따로 정한다.
         // 분자 옆(멀리)에 세운 경우에만 크게 키운다.
-        AIAssistantSpeechBubble bubble = CreateSpeechBubble(root.transform, visual,
+        CreateSpeechBubble(root.transform, visual,
             proteinLoader != null ? AnchoredBubbleUiScale : 1f);
 
-        var tester = root.AddComponent<AIAssistantStateTester>();
-        tester.visual = visual;
-        tester.bubble = bubble;
+        // AIAssistantStateTester는 더 이상 붙이지 않는다.
+        //
+        // AI 연동 전에 표정과 말풍선을 눈으로 확인하려고 만든 임시 컴포넌트인데,
+        // 켜져 있으면 스페이스로 예시 문구가 나오고 숫자키로 표정이 바뀐다.
+        // 실제 플레이 중에는 사고다 — 구술 확인에 답을 타이핑하다 띄어쓰기를 할 때마다
+        // 지금 사건과 무관한 예시 문구가 튀어나온다. 연출을 다시 확인할 일이 있으면
+        // 그때만 손으로 붙였다 떼는 편이 안전하다.
 
         // Play 버튼을 누르기 전(에디터 편집 모드)에는 비서가 보이지 않아야 한다.
         // IntroDirector.Awake()가 Play 시작 시점에 다시 켠다.
@@ -200,7 +204,7 @@ public static class AIAssistantSetupMenu
 
         Selection.activeGameObject = root;
         Debug.Log("[AIAssistantSetup] AI 비서 캐릭터를 생성했습니다(편집 모드에서는 비활성). " +
-                  "Play 후 숫자키 1~5로 상태 전환, Space로 말풍선 테스트.");
+                  "Play를 누르면 IntroDirector가 켭니다.");
     }
 
     // --- 파츠 생성 ---
