@@ -5,9 +5,7 @@
 ## 📌 Status
 
 - [ ] To Do
-- [ ] In Progress
 - [x] Done
-- [ ] Review Needed
 
 ---
 
