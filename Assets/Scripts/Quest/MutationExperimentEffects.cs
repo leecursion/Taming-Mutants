@@ -54,9 +54,13 @@ public class MutationExperimentEffects : MonoBehaviour
         {
             float p = t / duration;
             Camera cam = Camera.main;
-            if (kind != "break" && cam != null) transform.rotation = cam.transform.rotation;
+            // "scan"은 카메라로 돌려세우지 않는다. 후보 칸(Slot)의 축을 그대로 써야 스캔 선이
+            // 칸의 사선 배치(CompoundSelectionPanel.diagonalYaw)와 같은 기울기로 지나간다.
+            // 카메라 정렬을 걸면 칸만 사선이고 선은 화면 수평이라 둘이 어긋나 보인다.
+            if (kind != "break" && kind != "scan" && cam != null) transform.rotation = cam.transform.rotation;
             if (kind == "scan")
             {
+                // 칸의 로컬 축 위에서 긋는다 — 칸이 사선으로 놓인 만큼 선도 함께 기운다.
                 line.positionCount = 2;
                 float y = Mathf.Lerp(radius, -radius, p);
                 line.SetPosition(0, new Vector3(-radius, y, -radius));

@@ -200,6 +200,10 @@ public sealed class OralCheckPanel : MonoBehaviour
         button.targetGraphic = image;
         text = TextAt("Label", rect, 0, 0, width, 36, 17, color == Accent ? new Color(0.02f, 0.10f, 0.12f) : Ink);
         text.alignment = TextAnchor.MiddleCenter;
+        // TextAt은 글자를 넣지 않는다(Label만 넣는다). 여기서 채우지 않으면 label은 오브젝트
+        // 이름으로만 남고 버튼은 글씨 없는 빈 칸이 된다 — 넘어가기 버튼만 LateUpdate에서
+        // 따로 글자를 넣어 주어 멀쩡해 보였다.
+        text.text = label;
         return button;
     }
 

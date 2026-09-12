@@ -204,9 +204,15 @@ public class CompoundSelectionPanel : MonoBehaviour
 
     private void OnEnable()
     {
-        // 씬에서 참조를 안 걸어도 레벨 연동(아미노산 단계에서만 표시)이 되도록 자동 탐색
+        // 씬에서 참조를 안 걸어도 레벨 연동(아미노산 단계에서만 표시)이 되도록 자동 탐색.
+        //
+        // 비활성까지 뒤져야 한다. IntroDirector.Awake가 퀘스트를 고르기 전에 무대
+        // (ProteinAnchor_Main = StructureLevelController가 붙은 오브젝트)를 통째로 꺼 두므로,
+        // 기본 옵션으로 찾으면 여기서는 거의 항상 null이 된다. 그러면 레벨 이벤트를 아예
+        // 구독하지 못해 후보물질이 리본/나선 단계에서도, 연구실로 돌아온 뒤에도 그대로 남는다
+        // — StructureLevelBackButton/DockingQuestController가 같은 이유로 Include를 쓴다.
         if (levelController == null)
-            levelController = FindFirstObjectByType<StructureLevelController>();
+            levelController = FindFirstObjectByType<StructureLevelController>(FindObjectsInactive.Include);
         if (levelController != null) levelController.OnLevelChanged += HandleLevelChanged;
         if (proteinLoader == null && levelController != null)
             proteinLoader = levelController.GetComponent<ProteinLoader>();
@@ -229,15 +235,57 @@ public class CompoundSelectionPanel : MonoBehaviour
             HandleLevelChanged(levelController.CurrentLevel);
         else if (autoPlace)
             StartCoroutine(PlaceNextFrame());
+
+        ApplyContentVisibility();
     }
 
     // --- 표시 레벨 연동 ---
 
+    /// <summary>레벨만 봤을 때 보여야 하는지. 레벨 컨트롤러가 아예 없는 씬에서는 항상 보인다.</summary>
+    private bool _levelWantsVisible = true;
+
+    /// <summary>지금 후보물질 칸이 화면에 떠 있는지. 실험 노트가 같은 판단을 복제하지 않도록 공개한다.</summary>
+    public bool ContentVisible => _contentRoot == null || _contentRoot.gameObject.activeSelf;
+
     private void HandleLevelChanged(StructureLevelController.ViewLevel level)
     {
-        bool visible = level == StructureLevelController.ViewLevel.AminoAcid;
-        if (_contentRoot != null) _contentRoot.gameObject.SetActive(visible);
-        if (visible && autoPlace) PlaceNow();
+        _levelWantsVisible = level == StructureLevelController.ViewLevel.AminoAcid;
+        ApplyContentVisibility();
+    }
+
+    /// <summary>
+    /// 레벨과 무대 상태를 함께 보고 후보물질 칸을 켜고 끈다.
+    ///
+    /// 레벨 이벤트만으로는 부족하다. 사건을 끝내고 연구실로 돌아올 때
+    /// (QuestSession.SetStageVisible(false) → ProteinAnchor_Main 비활성)는 레벨이 아미노산인
+    /// 채로 무대만 꺼진다 — 레벨 전환이 한 번도 일어나지 않으므로, 이 검사가 없으면 후보물질이
+    /// 퀘스트 보드 앞에 그대로 떠 있는다. 무대가 꺼지면 레벨 요구도 함께 내려, 다음 사건의
+    /// 구조를 읽는 동안(로딩이 끝나야 SetLevel(Ribbon)이 온다) 지난 사건의 후보가 잠깐
+    /// 되살아나는 일도 막는다.
+    /// </summary>
+    private void ApplyContentVisibility()
+    {
+        if (_contentRoot == null) return;
+
+        bool stageActive = levelController == null || levelController.gameObject.activeInHierarchy;
+        if (!stageActive) _levelWantsVisible = false;
+
+        bool visible = _levelWantsVisible && stageActive;
+        if (_contentRoot.gameObject.activeSelf == visible) return;
+
+        _contentRoot.gameObject.SetActive(visible);
+
+        if (visible)
+        {
+            if (autoPlace) PlaceNow();
+            return;
+        }
+
+        // 숨길 때는 들고 있던 입력 상태도 함께 거둔다 — 다시 내려왔을 때 누르던 중이던 칸이
+        // 그대로 이어져 원치 않는 선택으로 확정되지 않게.
+        CancelInspectionHold();
+        if (_hovered != null) _hovered.SetHovered(false);
+        _hovered = null;
     }
 
     private void HandleProteinLoaded(ProteinLoader.ProteinData data)
@@ -261,6 +309,10 @@ public class CompoundSelectionPanel : MonoBehaviour
     // 재측정하지 않고 상수+벡터 연산만 하므로 매 프레임 호출해도 비용이 작다.
     private void LateUpdate()
     {
+        // 무대가 꺼지는 순간(연구실 복귀)은 이벤트로 오지 않으므로 매 프레임 확인한다.
+        // 상태가 바뀔 때만 SetActive를 부르므로 비용은 bool 비교 한 번이다.
+        ApplyContentVisibility();
+
         if (!autoPlace) return;
         if (_contentRoot == null || !_contentRoot.gameObject.activeSelf) return;
         PlaceNow();
