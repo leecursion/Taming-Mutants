@@ -283,9 +283,32 @@ public partial class AIAssistantBrain
         if (bubble != null) bubble.Hide();
     }
 
+    /// <summary>
+    /// 결과 노트를 닫는다('노트 닫기').
+    ///
+    /// 판정이 끝난 뒤(Completed) 남아 있는 것은 비서가 결과를 읽어 주는 시간뿐이다. 그 낭독이
+    /// 끝나야 구술 확인이 풀리도록 두면, 후보물질 결합에 성공하고도 몇 초 동안 노트를 닫지
+    /// 못한 채 기다려야 한다 — 닫는 순간 낭독을 접고 바로 정리한다.
+    /// StopCoroutine은 finally를 실행하지 않으므로 뒷정리는 여기서 직접 한다.
+    /// </summary>
     public void DismissOralResult()
     {
-        if (!IsOralCheckActive) { OralPhase = OralCheckPhase.Hidden; OralEvidence = ""; }
+        if (IsOralCheckActive)
+        {
+            // 아직 답변을 받는 중이라면 이 버튼은 '지금은 넘어가기'다 — SkipOralCheck이 맡는다.
+            if (OralPhase != OralCheckPhase.Completed) return;
+
+            if (_oralRoutine != null) { StopCoroutine(_oralRoutine); _oralRoutine = null; }
+            if (bubble != null) bubble.Hide();
+            // 복습하러 다른 단계로 옮겨 갔다면, 성공을 확정한 원래 단계로 되돌려 놓고 끝낸다.
+            if (session != null && session.CurrentQuest == _oralQuest &&
+                session.CurrentStage != _oralReturnStage)
+                JumpForOral(_oralReturnStage);
+            ReleaseOralCheck();
+        }
+
+        OralPhase = OralCheckPhase.Hidden;
+        OralEvidence = "";
     }
 
     private void HandleOralBackRequested()

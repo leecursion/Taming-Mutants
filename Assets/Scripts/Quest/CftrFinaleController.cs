@@ -115,6 +115,10 @@ public class CftrFinaleController : MonoBehaviour
         if (!result.IsSuccess) return;
         if (result.Compound == null || result.Compound.id != finaleCompoundId) return;
 
+        // 성공 즉시 해결 화면으로 넘어가는 설정이면 마무리 장면을 끼워 넣지 않는다.
+        // 검증 버튼을 띄워도 해결 화면이 그 위를 덮어 누를 수 없다.
+        if (dockingController != null && dockingController.completeImmediatelyOnSuccess) return;
+
         _finalePlayed = true;
         if (dockingController != null && dockingController.selectionPanel != null)
             dockingController.selectionPanel.Experiment.OfferVerification("채널 기능 검증", () => StartCoroutine(TrackedFinaleRoutine()));
@@ -147,6 +151,7 @@ public class CftrFinaleController : MonoBehaviour
         yield return new WaitForSeconds(sceneHoldSeconds);
         if (dockingController != null && dockingController.selectionPanel != null)
             dockingController.selectionPanel.Experiment.FinishVerification("막 배치 → 채널 개방 → Cl⁻ 흐름 / 점액 배출 개선");
+        if (_sceneRoot != null) _sceneRoot.SetActive(false);
         if (dockingController != null) dockingController.CompleteVerification();
     }
 

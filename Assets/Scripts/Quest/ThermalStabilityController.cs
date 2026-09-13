@@ -239,8 +239,22 @@ public class ThermalStabilityController : MonoBehaviour
             level == StructureLevelController.ViewLevel.Helix ? helixReturnLines : ribbonReturnLines));
     }
 
+    /// <summary>
+    /// 온도 인터랙션이 놓일 무대(ProteinAnchor_Main)가 지금 켜져 있는지.
+    ///
+    /// 이 컨트롤러는 무대 바깥(씬 루트)에 있어서 무대와 함께 꺼지지 않는다.
+    /// CompoundSelectionPanel이 후보물질 칸을 두고 같은 검사를 하는 것과 같은 이유다.
+    /// </summary>
+    private bool StageActive => levelController != null && levelController.gameObject.activeInHierarchy;
+
     private void Update()
     {
+        // 사건을 끝내고 연구실로 돌아올 때는 무대만 꺼지고 레벨 전환은 한 번도 일어나지 않는다
+        // (QuestSession.SetStageVisible(false)). 레벨 이벤트에만 기대면 온도 조절기와 HUD가
+        // 퀘스트 보드 앞에 그대로 떠 있게 되므로, 무대가 사라진 것을 보고 스스로 거둔다.
+        if (!StageActive && (_thermalStageActive || (_sliderPanel != null && _sliderPanel.activeSelf)))
+            ExitThermalStage(restoreCamera: false);
+
         _stabilizationBlend = Mathf.MoveTowards(_stabilizationBlend, _stabilized ? 1f : 0f, Time.deltaTime / 1.5f);
         ApplyWobble();
     }
@@ -310,7 +324,14 @@ public class ThermalStabilityController : MonoBehaviour
         if (assistant != null) assistant.SpeakSequence(lines);
     }
 
-    public void ExitThermalStage()
+    public void ExitThermalStage() => ExitThermalStage(restoreCamera: true);
+
+    /// <param name="restoreCamera">
+    /// 클로즈업을 직접 되돌릴지. 연구실로 후퇴하는 중이라면 꺼야 한다 — 그때는
+    /// CameraTransitionDirector가 인체 단계까지 카메라를 끌고 가는 중이라,
+    /// 여기서 '제자리'로 되돌리는 코루틴이 겹치면 두 연출이 서로 카메라를 빼앗는다.
+    /// </param>
+    public void ExitThermalStage(bool restoreCamera)
     {
         _thermalStageActive = false;
         ClearMutationEffects();
@@ -335,6 +356,13 @@ public class ThermalStabilityController : MonoBehaviour
 
         // 진입할 때 당겨둔 카메라를 원래 자리로 되돌린다 — 안 그러면 '이전'을 눌러
         // Ribbon/Helix로 돌아가도 카메라가 클로즈업된 채로 남는다.
+        if (!restoreCamera)
+        {
+            // 찍어둔 자리는 방금 접은 사건의 카메라 자리다. 들고 있어 봐야 다음에 잘못 쓰인다.
+            _hasCameraSnapshot = false;
+            return;
+        }
+
         if (_hasCameraSnapshot && targetCamera != null)
         {
             StopAllCoroutines();

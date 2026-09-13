@@ -359,17 +359,37 @@ public class ProteinLoader : MonoBehaviour
         foreach (var g in _spawnedBonds) { if (!g) continue; var r = g.GetComponent<Renderer>(); if (r) renderers.Add(r); }
         if (renderers.Count == 0) yield break;
 
-        foreach (var r in renderers) r.sharedMaterial = RuntimeMaterials.Transparent;
-
+        // 페이드가 색을 바꿔서는 안 된다. 알파만 흔들 것이므로 RGB는 시작할 때 한 번만 읽어
+        // 그대로 들고 간다 — 렌더러가 지금 쓰고 있는 프로퍼티 블록에서 매번 되읽으면, 앞선
+        // FadeOut이 남긴 알파 0을 "색이 없다"로 오해해 전부 회색으로 덮어써 버린다
+        // (사건 4 인트로가 FadeOut(0) → FadeIn 순서라 정확히 이 경우에 걸려 pLDDT 색이 날아갔다).
+        // 원래 머티리얼도 함께 기억한다. 투명 머티리얼은 ZWrite를 끄므로 그대로 두면 구조가
+        // 앞뒤로 겹쳐 그려지며 뿌옇게 보인다 — 다 드러난 뒤에는 원래 것으로 되돌린다.
+        var originalMaterials = new List<Material>(renderers.Count);
+        var baseColors = new List<Color>(renderers.Count);
         var mpb = new MaterialPropertyBlock();
+        foreach (var r in renderers)
+        {
+            originalMaterials.Add(r.sharedMaterial);
+            r.GetPropertyBlock(mpb);
+            Color c;
+            if (mpb.HasColor("_BaseColor")) c = mpb.GetColor("_BaseColor");
+            else if (r.sharedMaterial != null && r.sharedMaterial.HasProperty("_BaseColor"))
+                c = r.sharedMaterial.GetColor("_BaseColor");
+            else c = Color.white;
+            c.a = 1f;
+            baseColors.Add(c);
+            r.sharedMaterial = RuntimeMaterials.Transparent;
+        }
+
         void ApplyAlpha(float alpha)
         {
-            foreach (var r in renderers)
+            for (int i = 0; i < renderers.Count; i++)
             {
+                Renderer r = renderers[i];
                 if (!r) continue;
                 r.GetPropertyBlock(mpb);
-                Color c = mpb.GetColor("_BaseColor");
-                if (c.a <= 0f) c = new Color(0.75f, 0.78f, 0.82f, 1f); // 색이 안 잡혀 있으면 은은한 회색
+                Color c = baseColors[i];
                 c.a = alpha;
                 mpb.SetColor("_BaseColor", c);
                 r.SetPropertyBlock(mpb);
@@ -385,6 +405,10 @@ public class ProteinLoader : MonoBehaviour
             yield return null;
         }
         ApplyAlpha(to);
+
+        if (to >= 1f)
+            for (int i = 0; i < renderers.Count; i++)
+                if (renderers[i]) renderers[i].sharedMaterial = originalMaterials[i];
     }
 
     /// <summary>

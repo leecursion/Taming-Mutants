@@ -101,6 +101,29 @@ public class CameraTransitionDirector : MonoBehaviour
 
     private readonly Dictionary<QuestLevel, LevelStage> _stages = new Dictionary<QuestLevel, LevelStage>();
     private Coroutine _running;
+    private bool _hasLabEntryPose;
+    private Vector3 _labEntryPosition;
+    private Quaternion _labEntryRotation;
+    private float _labEntryFov;
+
+    /// <summary>사건을 클릭한 순간의 연구실 시점을 복귀와 다음 진입의 기준으로 보관한다.</summary>
+    public void CaptureLabEntryPose()
+    {
+        if (targetCamera == null || IsTransitioning) return;
+        _labEntryPosition = targetCamera.transform.position;
+        _labEntryRotation = targetCamera.transform.rotation;
+        _labEntryFov = targetCamera.fieldOfView;
+        _hasLabEntryPose = true;
+    }
+
+    private Vector3 StagePosition(LevelStage stage) =>
+        stage.level == QuestLevel.Level0_Body && _hasLabEntryPose ? _labEntryPosition : stage.Anchor.position;
+
+    private Quaternion StageRotation(LevelStage stage) =>
+        stage.level == QuestLevel.Level0_Body && _hasLabEntryPose ? _labEntryRotation : stage.Anchor.rotation;
+
+    private float StageFov(LevelStage stage) =>
+        stage.level == QuestLevel.Level0_Body && _hasLabEntryPose ? _labEntryFov : stage.fieldOfView;
 
     private void Awake()
     {
@@ -132,7 +155,7 @@ public class CameraTransitionDirector : MonoBehaviour
             if (pair.Key != level) pair.Value.SetActive(false, invokeEvents: false);
 
         target?.SetActive(true, invokeEvents: false);
-        if (target != null) ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
+        if (target != null) ApplyPose(target, StagePosition(target), StageRotation(target));
 
         CurrentLevel = level;
         target?.onEnter?.Invoke();
@@ -156,15 +179,20 @@ public class CameraTransitionDirector : MonoBehaviour
         LevelStage stage = Find(CurrentLevel);
         if (stage == null || stage.Anchor == null) return false;
 
-        position = stage.Anchor.position;
-        rotation = stage.Anchor.rotation;
+        position = StagePosition(stage);
+        rotation = StageRotation(stage);
         return true;
     }
 
     /// <summary>연출과 함께 지정한 레벨로 이동한다. 이미 그 레벨이면 아무 일도 하지 않는다.</summary>
     public void GoTo(QuestLevel level)
     {
-        if (level == CurrentLevel && !IsTransitioning) return;
+        if (level == CurrentLevel && !IsTransitioning)
+        {
+            if (level == QuestLevel.Level0_Body && _hasLabEntryPose)
+                SnapTo(level);
+            return;
+        }
 
         StopRunning();
         _running = StartCoroutine(TransitionRoutine(CurrentLevel, level));
@@ -190,7 +218,7 @@ public class CameraTransitionDirector : MonoBehaviour
         {
             if (!SharesContent(previous, target)) previous?.SetActive(false);
             target.SetActive(true);
-            ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
+            ApplyPose(target, StagePosition(target), StageRotation(target));
             FinishTransition(to);
             yield break;
         }
@@ -212,15 +240,15 @@ public class CameraTransitionDirector : MonoBehaviour
             float t = ease.Evaluate(raw);
 
             Vector3 position = settings.via != null
-                ? QuadraticBezier(startPos, settings.via.position, target.Anchor.position, t)
-                : Vector3.LerpUnclamped(startPos, target.Anchor.position, t);
+                ? QuadraticBezier(startPos, settings.via.position, StagePosition(target), t)
+                : Vector3.LerpUnclamped(startPos, StagePosition(target), t);
 
             Quaternion rotation = ResolveRotation(settings, startRot, target, position, t);
 
             // 이동 중에만 시야각을 벌렸다가 되돌린다. 중간에서 가장 크다.
             float punch = settings.fovPunch * Mathf.Sin(raw * Mathf.PI);
-            float baseFov = target.fieldOfView > 0f
-                ? Mathf.LerpUnclamped(startFov, target.fieldOfView, t)
+            float baseFov = StageFov(target) > 0f
+                ? Mathf.LerpUnclamped(startFov, StageFov(target), t)
                 : startFov;
 
             cam.SetPositionAndRotation(position, rotation);
@@ -249,7 +277,7 @@ public class CameraTransitionDirector : MonoBehaviour
         if (!hidden && previous != null && previous != target && !SharesContent(previous, target))
             previous.SetActive(false);
 
-        ApplyPose(target, target.Anchor.position, target.Anchor.rotation);
+        ApplyPose(target, StagePosition(target), StageRotation(target));
         FinishTransition(to);
     }
 
@@ -277,7 +305,7 @@ public class CameraTransitionDirector : MonoBehaviour
     private Quaternion ResolveRotation(LevelTransition settings, Quaternion startRot,
                                        LevelStage target, Vector3 position, float t)
     {
-        Quaternion endRot = target.Anchor.rotation;
+        Quaternion endRot = StageRotation(target);
 
         if (settings.style != CameraMotionStyle.PanAndFocus || settings.via == null)
             return Quaternion.SlerpUnclamped(startRot, endRot, t);
@@ -318,7 +346,7 @@ public class CameraTransitionDirector : MonoBehaviour
     private void ApplyPose(LevelStage stage, Vector3 position, Quaternion rotation)
     {
         targetCamera.transform.SetPositionAndRotation(position, rotation);
-        if (stage.fieldOfView > 0f) targetCamera.fieldOfView = stage.fieldOfView;
+        if (StageFov(stage) > 0f) targetCamera.fieldOfView = StageFov(stage);
     }
 
     // --- 보조 ---
@@ -330,6 +358,17 @@ public class CameraTransitionDirector : MonoBehaviour
             foreach (LevelTransition t in transitions)
                 if (t != null && t.from == from && t.to == to) return t;
         }
+
+        // Returning from any investigation level should pull back into the lab,
+        // including completion, which can remain at the pocket or docking level.
+        if (to == QuestLevel.Level0_Body)
+            return new LevelTransition
+            {
+                from = from, to = to,
+                style = CameraMotionStyle.SpatialZoomOut,
+                duration = 3f, fovPunch = -14f,
+                revealAt = .4f, hidePreviousAt = .5f,
+            };
 
         return fallback;
     }

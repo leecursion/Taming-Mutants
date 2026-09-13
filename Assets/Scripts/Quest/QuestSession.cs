@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
@@ -49,6 +50,11 @@ public class QuestSession : MonoBehaviour
 
     public bool IsRunning => CurrentQuest != null && !IsCompleted;
     public bool IsCompleted { get; private set; }
+
+    // Keep solved cases across case switches and retries within this play session.
+    private readonly HashSet<string> _completedQuestIds = new HashSet<string>();
+    public bool HasCompletedQuest(string questId) =>
+        !string.IsNullOrEmpty(questId) && _completedQuestIds.Contains(questId);
 
     public event Action<QuestDefinition> OnQuestStarted;
     public event Action<QuestStageBriefing> OnStageEntered;
@@ -119,6 +125,7 @@ public class QuestSession : MonoBehaviour
         if (finished >= LastStage)
         {
             IsCompleted = true;
+            if (!string.IsNullOrEmpty(CurrentQuest.questId)) _completedQuestIds.Add(CurrentQuest.questId);
             OnQuestCompleted?.Invoke(CurrentQuest);
             return;
         }

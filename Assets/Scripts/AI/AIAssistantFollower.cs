@@ -233,8 +233,7 @@ public class AIAssistantFollower : MonoBehaviour
         {
             _anchorPosition = Vector3.SmoothDamp(
                 _anchorPosition, desired, ref _followVelocity,
-                UsesScreenCorner ? 1.5f : followSmoothTime,
-                UsesScreenCorner ? 0.5f : maxFollowSpeed);
+                followSmoothTime, maxFollowSpeed);
 
             if (Vector3.Distance(_anchorPosition, desired) < deadZoneRadius * SettleRatio)
             {
@@ -255,10 +254,10 @@ public class AIAssistantFollower : MonoBehaviour
             if (cam != null)
             {
                 float depth = Mathf.Max(closeUpLocalOffset.z, MinDepth(cam));
-                // Clamp from the corner so the assembly's outer edges, not its center,
-                // sit against the screen padding. Reserve room for the upward bob.
+                // Keep the same corner placement while leaving room for the intro float motion.
                 return EnforceRightSide(cam.ViewportToWorldPoint(new Vector3(1f, 1f, depth)))
-                    - cam.transform.up * 0.015f;
+                    - cam.transform.up * Mathf.Abs(bobAmplitude)
+                    - cam.transform.right * Mathf.Abs(swayAmplitude);
             }
             return ComputeUserRelativeAnchor(closeUpLocalOffset);
         }
@@ -669,8 +668,6 @@ public class AIAssistantFollower : MonoBehaviour
     private Vector3 ComputeFloatOffset()
     {
         float t = Time.time + _noiseSeed;
-        if (UsesScreenCorner || closeUpOverrideActive)
-            return followTarget.up * (Mathf.Sin(t * Mathf.PI * 2f / 8f) * 0.015f);
         float bob = Mathf.Sin(t * bobFrequency * Mathf.PI * 2f) * bobAmplitude;
         float sway = Mathf.Sin(t * swayFrequency * Mathf.PI * 2f + 1.3f) * swayAmplitude;
         return Vector3.up * bob + followTarget.right * sway;

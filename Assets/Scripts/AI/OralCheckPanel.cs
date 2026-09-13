@@ -162,7 +162,9 @@ public sealed class OralCheckPanel : MonoBehaviour
             !_brain.OralIsRecording && !_brain.OralIsTranscribing;
         _retry.interactable = answering && !_brain.OralIsTranscribing;
         _skipLabel.text = phase == OralCheckPhase.Completed ? "노트 닫기" : "지금은 넘어가기";
-        _skip.interactable = phase != OralCheckPhase.Completed || !_brain.IsOralCheckActive;
+        // 결과가 나온 뒤에는 언제나 닫을 수 있다. 판정은 이미 끝났고 남은 것은 비서의 낭독뿐인데,
+        // 그것까지 기다리게 하면 결합에 성공하고도 몇 초 동안 버튼이 죽은 채로 남는다.
+        _skip.interactable = true;
         _hint.text = _brain.OralIsRecording ? "듣고 있어요 · 기존 마이크 버튼을 다시 누르면 확인" :
             _brain.OralIsTranscribing ? "말을 글로 옮기고 있어요." :
             answering ? (_brain.OralSecondsRemaining < 15f

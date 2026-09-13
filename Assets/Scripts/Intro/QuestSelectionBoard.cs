@@ -23,6 +23,7 @@ public class QuestSelectionBoard : MonoBehaviour
 {
     [Header("데이터")]
     public QuestCatalog catalog;
+    public QuestSession session;
 
     [Header("배치")]
     [Tooltip("비워두면 Camera.main. 보드가 항상 이쪽을 향한다.")]
@@ -114,6 +115,7 @@ public class QuestSelectionBoard : MonoBehaviour
     private void Awake()
     {
         if (lookTarget == null && Camera.main != null) lookTarget = Camera.main.transform;
+        if (session == null) session = FindFirstObjectByType<QuestSession>(FindObjectsInactive.Include);
         Build();
         SetVisibleImmediate(false);
     }
@@ -700,7 +702,7 @@ public class QuestSelectionBoard : MonoBehaviour
         element.minHeight = Mathf.Max(cardMinHeight, _uniformCardHeight);
 
         var layout = cardGo.AddComponent<VerticalLayoutGroup>();
-        layout.padding = new RectOffset(26, 104, 18, 18); // 오른쪽은 난이도 표시 자리로 비워둔다
+        layout.padding = new RectOffset(26, 154, 18, 18); // 오른쪽은 해결 표시와 난이도 자리로 비워둔다
         layout.spacing = 6f;
         layout.childControlWidth = true;
         layout.childControlHeight = true;
@@ -722,6 +724,26 @@ public class QuestSelectionBoard : MonoBehaviour
 
         BuildCardText(cardGo.transform, quest);
         BuildDifficulty(cardGo.transform, quest);
+        if (session != null && session.HasCompletedQuest(quest.questId))
+        {
+            // Desaturate every card graphic, including its glow, border and difficulty dots.
+            foreach (Graphic graphic in cardGo.GetComponentsInChildren<Graphic>())
+            {
+                Color c = graphic.color;
+                float gray = c.grayscale;
+                graphic.color = new Color(gray, gray, gray, c.a);
+            }
+            panel.color = new Color(.12f, .12f, .12f, panelColor.a);
+            Text solved = CreateText(cardGo.transform, "SolvedStatus", 24, FontStyle.Bold,
+                new Color(.85f, .85f, .85f));
+            solved.text = "사건 해결";
+            solved.alignment = TextAnchor.UpperRight;
+            solved.gameObject.AddComponent<LayoutElement>().ignoreLayout = true;
+            RectTransform solvedRect = solved.rectTransform;
+            solvedRect.anchorMin = solvedRect.anchorMax = solvedRect.pivot = Vector2.one;
+            solvedRect.anchoredPosition = new Vector2(-24f, -18f);
+            solvedRect.sizeDelta = new Vector2(124f, 34f);
+        }
 
         // 버튼은 카드 전체에 깔린 배경 패널을 대상으로 삼아 어디를 눌러도 잡히게 한다.
         var button = cardGo.AddComponent<Button>();

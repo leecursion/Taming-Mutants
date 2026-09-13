@@ -1,5 +1,7 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.UI;
 
 /// <summary>
 /// 게임을 켰을 때의 인트로 진행자.
@@ -78,6 +80,10 @@ public class IntroDirector : MonoBehaviour
 
     /// <summary>사용자가 고른 퀘스트. 아직 고르지 않았으면 null.</summary>
     private QuestDefinition _chosen;
+    private GameObject _completionScreen;
+    private bool _showingCompletion;
+    private bool _completionBackRequested;
+    private readonly List<Canvas> _completionHiddenCanvases = new List<Canvas>();
 
     private void Awake()
     {
@@ -109,6 +115,8 @@ public class IntroDirector : MonoBehaviour
 
     private void OnDisable()
     {
+        ClearCompletionScreen();
+        RestoreCompletionCanvases();
         if (board != null) board.OnQuestSelected -= HandleQuestSelected;
         if (levelController != null) levelController.OnExitRequested -= HandleExitRequested;
         if (session != null) session.OnQuestCompleted -= HandleQuestCompleted;
@@ -158,7 +166,12 @@ public class IntroDirector : MonoBehaviour
     /// </summary>
     public void ReturnToQuestSelection()
     {
-        if (IsRunning) return; // 이미 인트로/선택 진행 중이면 중복 시작하지 않는다
+        if (IsRunning) return;
+        if (_showingCompletion)
+        {
+            _completionBackRequested = true;
+            return;
+        }
 
         StopAllCoroutines();
         StartCoroutine(ReturnToQuestSelectionRoutine());
@@ -168,16 +181,188 @@ public class IntroDirector : MonoBehaviour
 
     /// <summary>
     /// 5단계(Quest5_Verification)까지 다 끝내 QuestSession.OnQuestCompleted가 발생하면,
-    /// 사용자가 '이전'을 누르지 않아도 자동으로 연구실로 돌아와 다음 사건을 고를 수 있게 한다.
-    /// 비서가 "사건 해결 완료!" 대사를 다 마칠 때까지 기다렸다가 시작한다 — 대사 도중에
-    /// 카메라가 줌아웃을 시작하면 완료 축하 대사가 이동 중에 묻혀 버린다.
+    /// 완료 배지를 보여주고 '이전' 입력을 기다린다. 입력 후 연구실로 후퇴한다.
     /// </summary>
-    private void HandleQuestCompleted(QuestDefinition quest) => StartCoroutine(ReturnAfterCompletionRoutine());
+    private void HandleQuestCompleted(QuestDefinition quest)
+    {
+        if (IsRunning || _showingCompletion) return;
+        StartCoroutine(ReturnAfterCompletionRoutine());
+    }
 
     private IEnumerator ReturnAfterCompletionRoutine()
     {
-        yield return WaitForAssistantIdle(10f);
-        ReturnToQuestSelection();
+        _showingCompletion = true;
+        _completionBackRequested = false;
+        yield return ShowCompletionScreen();
+        while (!_completionBackRequested) yield return null;
+        yield return ReturnToQuestSelectionRoutine();
+    }
+
+    // An opaque overlay also covers detached molecule effects and screen-space HUDs.
+    // Fade it away when returning so the spatial zoom-out remains visible.
+    private IEnumerator ShowCompletionScreen()
+    {
+        _completionScreen = new GameObject("QuestCompletionScreen", typeof(RectTransform),
+            typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster), typeof(CanvasGroup));
+        _completionScreen.transform.SetParent(transform, false);
+        var canvas = _completionScreen.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = short.MaxValue;
+        var scaler = _completionScreen.GetComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = .5f;
+
+        var background = new GameObject("EmptyBackground", typeof(RectTransform), typeof(Image));
+        background.transform.SetParent(_completionScreen.transform, false);
+        var backgroundRect = (RectTransform)background.transform;
+        backgroundRect.anchorMin = Vector2.zero;
+        backgroundRect.anchorMax = Vector2.one;
+        backgroundRect.offsetMin = backgroundRect.offsetMax = Vector2.zero;
+        background.GetComponent<Image>().color = new Color(.015f, .035f, .055f, 1f);
+
+        Color mint = new Color(.25f, 1f, .8f);
+        var molecule = new GameObject("ShieldMolecule", typeof(RectTransform), typeof(CanvasGroup));
+        molecule.transform.SetParent(_completionScreen.transform, false);
+        ((RectTransform)molecule.transform).anchoredPosition = Vector2.up * 65f;
+        var moleculeGroup = molecule.GetComponent<CanvasGroup>();
+        moleculeGroup.alpha = 0;
+        Vector2[] atoms = { new Vector2(-48, 25), new Vector2(0, 53), new Vector2(48, 25),
+            new Vector2(48, -28), new Vector2(0, -56), new Vector2(-48, -28), Vector2.zero };
+        for (int i = 0; i < 6; i++)
+        {
+            CreateMoleculeBond(molecule.transform, atoms[i], atoms[(i + 1) % 6], mint);
+            if (i % 2 == 0) CreateMoleculeBond(molecule.transform, atoms[i], atoms[6], mint);
+        }
+        for (int i = 0; i < atoms.Length; i++)
+        {
+            var atom = new GameObject("Atom", typeof(RectTransform), typeof(Image));
+            atom.transform.SetParent(molecule.transform, false);
+            var rect = (RectTransform)atom.transform;
+            rect.anchoredPosition = atoms[i];
+            rect.sizeDelta = Vector2.one * (i == 6 ? 25f : 18f);
+            var atomImage = atom.GetComponent<Image>();
+            atomImage.sprite = HoloSpriteFactory.Circle();
+            atomImage.color = i % 2 == 0 ? new Color(.7f, .95f, 1f) : mint;
+            atomImage.raycastTarget = false;
+        }
+        Vector2[] outline = { new Vector2(0, 1), new Vector2(.85f, .6f),
+            new Vector2(.65f, -.45f), new Vector2(0, -1),
+            new Vector2(-.65f, -.45f), new Vector2(-.85f, .6f), new Vector2(0, 1) };
+        var strokes = new RectTransform[6];
+        for (int i = 0; i < strokes.Length; i++)
+        {
+            var stroke = new GameObject("ShieldStroke", typeof(RectTransform), typeof(Image));
+            stroke.transform.SetParent(_completionScreen.transform, false);
+            strokes[i] = (RectTransform)stroke.transform;
+            strokes[i].pivot = new Vector2(0, .5f);
+            strokes[i].anchoredPosition = outline[i] * 145f + Vector2.up * 65f;
+            Vector2 direction = outline[i + 1] - outline[i];
+            strokes[i].localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg);
+            strokes[i].sizeDelta = new Vector2(0, 5f);
+            stroke.GetComponent<Image>().color = mint;
+            stroke.GetComponent<Image>().raycastTarget = false;
+        }
+
+        var label = new GameObject("CompletionTitle", typeof(RectTransform), typeof(Text), typeof(CanvasGroup));
+        label.transform.SetParent(_completionScreen.transform, false);
+        var labelRect = (RectTransform)label.transform;
+        labelRect.anchoredPosition = new Vector2(0, -155f);
+        labelRect.sizeDelta = new Vector2(900, 90);
+        var title = label.GetComponent<Text>();
+        title.font = HoloFont.Resolve();
+        title.fontSize = 44;
+        title.alignment = TextAnchor.MiddleCenter;
+        title.color = mint;
+        title.text = "사건 해결 성공";
+        title.raycastTarget = false;
+        var group = label.GetComponent<CanvasGroup>();
+        group.alpha = 0;
+
+        // Allow all completion subscribers to finish before disabling the experiment stage.
+        yield return null;
+        HideStage();
+        HideCompletionCanvases<CompoundSelectionPanel>();
+        HideCompletionCanvases<LabExperimentUI>();
+        HideCompletionCanvases<ThermalStabilityHUD>();
+        HideCompletionCanvases<CftrHUD>();
+        HideCompletionCanvases<QuestManagerSpatialUI>();
+        HideCompletionCanvases<StructureLevelBackButton>();
+        // Present the empty background for a frame before drawing any success graphics.
+        Canvas.ForceUpdateCanvases();
+        yield return null;
+        for (float elapsed = 0; elapsed < 3f; elapsed += Time.unscaledDeltaTime)
+        {
+            float trace = Mathf.Clamp01(elapsed / 1.1f) * strokes.Length;
+            for (int i = 0; i < strokes.Length; i++)
+                strokes[i].sizeDelta = new Vector2(
+                    Vector2.Distance(outline[i], outline[i + 1]) * 145f * Mathf.Clamp01(trace - i), 5f);
+            group.alpha = Mathf.Clamp01((elapsed - .8f) / .5f);
+            moleculeGroup.alpha = Mathf.Clamp01((elapsed - .9f) / .6f);
+            molecule.transform.localScale = Vector3.one * Mathf.Lerp(.8f, 1f, Mathf.SmoothStep(0, 1, moleculeGroup.alpha));
+            yield return null;
+        }
+        var back = new GameObject("CompletionBack", typeof(RectTransform), typeof(Image), typeof(Button));
+        back.transform.SetParent(_completionScreen.transform, false);
+        var backRect = (RectTransform)back.transform;
+        backRect.anchoredPosition = new Vector2(0, -270f);
+        backRect.sizeDelta = new Vector2(280, 64);
+        back.GetComponent<Image>().sprite = HoloSpriteFactory.Panel();
+        back.GetComponent<Image>().color = new Color(.04f, .18f, .22f);
+        var button = back.GetComponent<Button>();
+        button.targetGraphic = back.GetComponent<Image>();
+        button.onClick.AddListener(ReturnToQuestSelection);
+        var caption = new GameObject("Label", typeof(RectTransform), typeof(Text));
+        caption.transform.SetParent(back.transform, false);
+        var captionRect = (RectTransform)caption.transform;
+        captionRect.anchorMin = Vector2.zero;
+        captionRect.anchorMax = Vector2.one;
+        captionRect.offsetMin = captionRect.offsetMax = Vector2.zero;
+        var captionText = caption.GetComponent<Text>();
+        captionText.font = HoloFont.Resolve();
+        captionText.fontSize = 28;
+        captionText.alignment = TextAnchor.MiddleCenter;
+        captionText.color = mint;
+        captionText.text = "연구실로 돌아가기";
+        captionText.raycastTarget = false;
+    }
+
+    private static void CreateMoleculeBond(Transform parent, Vector2 from, Vector2 to, Color color)
+    {
+        var bond = new GameObject("Bond", typeof(RectTransform), typeof(Image));
+        bond.transform.SetParent(parent, false);
+        var rect = (RectTransform)bond.transform;
+        rect.anchoredPosition = (from + to) * .5f;
+        rect.sizeDelta = new Vector2(Vector2.Distance(from, to), 4f);
+        rect.localRotation = Quaternion.Euler(0, 0, Mathf.Atan2(to.y - from.y, to.x - from.x) * Mathf.Rad2Deg);
+        bond.GetComponent<Image>().color = color;
+        bond.GetComponent<Image>().raycastTarget = false;
+    }
+
+    private void HideCompletionCanvases<T>() where T : Component
+    {
+        foreach (T component in FindObjectsByType<T>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            foreach (Canvas canvas in component.GetComponentsInChildren<Canvas>(true))
+                if (canvas.enabled && !_completionHiddenCanvases.Contains(canvas))
+                {
+                    _completionHiddenCanvases.Add(canvas);
+                    canvas.enabled = false;
+                }
+    }
+
+    private void RestoreCompletionCanvases()
+    {
+        foreach (Canvas canvas in _completionHiddenCanvases)
+            if (canvas != null) canvas.enabled = true;
+        _completionHiddenCanvases.Clear();
+    }
+
+    private void ClearCompletionScreen()
+    {
+        if (_completionScreen != null) Destroy(_completionScreen);
+        _completionScreen = null;
+        _showingCompletion = false;
     }
 
     private IEnumerator ReturnToQuestSelectionRoutine()
@@ -185,17 +370,31 @@ public class IntroDirector : MonoBehaviour
         IsRunning = true;
         _chosen = null;
 
+        if (_showingCompletion && assistant != null) assistant.ResetConversation();
+
         // 카메라를 인체 단계(Level0)로 되돌린다. HideStage부터 먼저 부르면 무대가 뚝 꺼지며
         // 되돌아가는 그림 없이 화면이 끊기고, 보드/비서도 아직 분자 옆 카메라 자리를 기준으로
         // 배치돼버린다. 트랜지션이 끝나 카메라가 실제로 인체 단계에 도착한 뒤에 정리한다.
         if (cameraDirector != null)
         {
             cameraDirector.GoTo(QuestLevel.Level0_Body);
+            if (_completionScreen != null)
+            {
+                var completionGroup = _completionScreen.GetComponent<CanvasGroup>();
+                completionGroup.interactable = false;
+                for (float elapsed = 0; elapsed < .45f; elapsed += Time.unscaledDeltaTime)
+                {
+                    completionGroup.alpha = 1f - Mathf.Clamp01(elapsed / .45f);
+                    yield return null;
+                }
+                ClearCompletionScreen();
+            }
             yield return new WaitUntil(() => !cameraDirector.IsTransitioning);
         }
 
         HideStage();
         PlaceAssistantForIntro();
+        ClearCompletionScreen();
 
         // 방금 나온 사건에서 아직 답이 오지 않은 질문이 있었다면 여기서 끊는다. 끊지 않으면
         // 뒤늦게 도착한 답이 "다른 사건을 골라볼까?" 뒤에 붙어 이전 사건 얘기를 계속하게 된다.
@@ -250,6 +449,7 @@ public class IntroDirector : MonoBehaviour
         // 켜는 순서가 구조 로딩보다 앞서야 해서 그쪽에 두는 편이 안전하다.
         MoveAssistantToQuestAnchor();
 
+        RestoreCompletionCanvases();
         if (session != null) session.StartQuest(_chosen);
         else Debug.LogError("[IntroDirector] QuestSession이 없어 퀘스트를 시작하지 못했습니다.", this);
 
@@ -266,6 +466,7 @@ public class IntroDirector : MonoBehaviour
     {
         if (quest == null || _chosen != null) return;
 
+        if (cameraDirector != null) cameraDirector.CaptureLabEntryPose();
         _chosen = quest;
     }
 
