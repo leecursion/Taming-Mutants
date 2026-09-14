@@ -523,6 +523,24 @@ public class StructureLevelController : MonoBehaviour
         else OnExitRequested?.Invoke();
     }
 
+    /// <summary>지금 아미노산/나선 단계가 보고 있는 Helix 구간. 고른 구간이 없으면 -1.</summary>
+    public int ActiveHelixIndex => _activeHelixIndex;
+
+    /// <summary>
+    /// 구조를 다시 읽은 직후, 로드 전에 보고 있던 단계로 되돌린다.
+    ///
+    /// <see cref="HandleLoaded"/>는 새 구조를 항상 리본에서 시작한다 — 퀘스트를 바꿀 때는
+    /// 그게 맞지만, 사건 4처럼 같은 사건 도중에 구조만 갈아끼우는 경우에는 화면이 통째로
+    /// 리본으로 튕겨 나가며 후보물질 칸까지 사라진다. 그럴 때 이 메서드로 원래 자리를 잇는다.
+    /// 새 구조에 없는 구간 번호는 버리고 리본으로 떨어진다.
+    /// </summary>
+    public void RestoreView(ViewLevel level, int helixIndex)
+    {
+        bool hasRegion = helixIndex >= 0 && helixIndex < _helixRegionRoots.Count;
+        if (hasRegion) _activeHelixIndex = helixIndex;
+        SetLevel(hasRegion ? level : ViewLevel.Ribbon);
+    }
+
     public void SetLevel(ViewLevel level)
     {
         CurrentLevel = level;

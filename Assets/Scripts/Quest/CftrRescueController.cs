@@ -484,6 +484,19 @@ public class CftrRescueController : MonoBehaviour
     private IEnumerator SwapToStructureRoutine(string relativePath, float fadeDuration)
     {
         IsStructureChanging = true;
+
+        // 구조를 다시 읽으면 StructureLevelController가 새 구조를 리본에서 시작한다. 사건을
+        // 바꾸는 게 아니라 같은 사건 도중 구조만 갈아끼우는 여기서는, 후보물질 결합에 성공한
+        // 직후 화면이 리본으로 튕겨 나가고 후보물질 칸까지 사라져 버린다 — 보고 있던 단계를
+        // 기억했다가 로드가 끝난 뒤 그대로 되돌린다.
+        StructureLevelController.ViewLevel levelBefore = StructureLevelController.ViewLevel.Ribbon;
+        int helixBefore = -1;
+        if (levelController != null)
+        {
+            levelBefore = levelController.CurrentLevel;
+            helixBefore = levelController.ActiveHelixIndex;
+        }
+
         yield return proteinLoader.FadeOutRoutine(fadeDuration);
 
         bool loaded = false;
@@ -494,6 +507,8 @@ public class CftrRescueController : MonoBehaviour
             proteinLoader.LoadStructure(relativePath);
             float loadDeadline = Time.realtimeSinceStartup + 15f;
             while (!loaded && Time.realtimeSinceStartup < loadDeadline) yield return null;
+            if (loaded && levelController != null)
+                levelController.RestoreView(levelBefore, helixBefore);
             yield return proteinLoader.FadeInRoutine(fadeDuration);
         }
         finally

@@ -120,8 +120,9 @@ public class LabExperimentUI : MonoBehaviour
     private void Update()
     {
         if (_root == null) return;
-        bool visible = _hasContent && _panel != null && _panel.isActiveAndEnabled &&
-            (_panel.levelController == null || _panel.levelController.CurrentLevel == StructureLevelController.ViewLevel.AminoAcid);
+        // 후보물질 칸과 정확히 같은 판단을 따른다. 레벨만 보면(예전 방식) 사건을 끝내고
+        // 연구실로 돌아왔을 때 레벨이 아미노산인 채로 무대만 꺼져서 노트만 화면에 남는다.
+        bool visible = _hasContent && _panel != null && _panel.isActiveAndEnabled && _panel.ContentVisible;
         _root.SetActive(visible);
         if (visible)
         {

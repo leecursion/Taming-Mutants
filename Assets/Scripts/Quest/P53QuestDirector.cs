@@ -9,12 +9,7 @@ using UnityEngine.UI;
 ///      (구조를 두 벌 복제하지 않는다 — DockingQuestController가 이미 만든 "안정화됨" 상태를
 ///       잠깐 껐다 켜는 것만으로 Before/After를 보여줄 수 있어 원자 1500여 개짜리 구조를
 ///       또 하나 스폰하는 비용을 피한다).
-///   2) Level 3&4 — DNA response element로 페이드하고, 안정화된 DBD 4개가 모여
-///      기능하는 p53 tetramer가 DNA에 결합하는 짧은 연출을 보여준다.
-///
-/// Rezatapopt가 tetramerization 자체를 만드는 것처럼 보이면 안 된다는 설계 원칙에 따라,
-/// 리간드는 이 연출에 등장하지 않는다 — "DBD가 안정화됐으니 원래 하던 일(사량체 결합)을
-/// 다시 할 수 있게 됐다"만 보여준다.
+///   2) DNA 배경과 기능 회복 결과를 표시한 뒤 공통 성공 화면으로 넘어간다.
 /// </summary>
 public class P53QuestDirector : MonoBehaviour
 {
@@ -26,7 +21,7 @@ public class P53QuestDirector : MonoBehaviour
     public string stabilizerCompoundId = "p53_stabilizer";
     [Tooltip("사량체가 모여들 DBD 대표 위치 (보통 ProteinAnchor_Main)")]
     public Transform dbdAnchor;
-    [Tooltip("마무리 연출로 만든 DNA/사량체를 원자 단계에서만 보이게 하려고 구독한다. " +
+    [Tooltip("마무리 연출로 만든 DNA를 원자 단계에서만 보이게 하려고 구독한다. " +
              "비우면 씬에서 자동 탐색.")]
     public StructureLevelController levelController;
     [Tooltip("다른 사건으로 넘어갈 때 이 연출을 치우려고 구독한다. 비우면 씬에서 자동 탐색.")]
@@ -42,14 +37,12 @@ public class P53QuestDirector : MonoBehaviour
     [Header("페이드")]
     public float fadeDuration = 0.6f;
 
-    [Header("DNA / Tetramer 연출")]
+    [Header("DNA 연출")]
     public float dnaHelixLength = 3.2f;
     public float dnaRadius = 0.35f;
     public int dnaBasePairCount = 22;
     public Color dnaBackboneColor = new Color(0.55f, 0.65f, 0.75f);
     public Color dnaBasePairColor = new Color(0.3f, 0.75f, 0.9f);
-    public Color tetramerColor = new Color(0.25f, 1f, 0.35f);
-    public float tetramerConvergeDuration = 2.2f;
 
     private CanvasGroup _fadeOverlay;
     private bool _finalePlayed;
@@ -83,8 +76,8 @@ public class P53QuestDirector : MonoBehaviour
     }
 
     /// <summary>
-    /// DNA/사량체는 단백질 앵커 옆에 세운 별개 오브젝트라, 원자를 끄는 레벨 전환이 함께 끄지
-    /// 못한다. 마무리 연출을 본 뒤 '이전'을 누르면 나선/리본 화면에 초록 구슬과 DNA만 남는다.
+    /// DNA는 단백질 앵커 옆에 세운 별개 오브젝트라, 원자를 끄는 레벨 전환이 함께 끄지
+    /// 못한다. 마무리 연출을 본 뒤 '이전'을 누르면 나선/리본 화면에 DNA만 남는다.
     /// </summary>
     private void HandleLevelChanged(StructureLevelController.ViewLevel level)
     {
@@ -103,8 +96,6 @@ public class P53QuestDirector : MonoBehaviour
 
         if (_dnaRoot != null) Destroy(_dnaRoot);
         _dnaRoot = null;
-        _tetramerSubunits.Clear();
-        _tetramerTargets = null;
 
         _finalePlayed = def == null || def.id != activeForQuestId;
     }
@@ -114,6 +105,10 @@ public class P53QuestDirector : MonoBehaviour
         if (_finalePlayed) return;
         if (!result.IsSuccess) return;
         if (result.Compound == null || result.Compound.id != stabilizerCompoundId) return;
+
+        // 성공 즉시 해결 화면으로 넘어가는 설정이면 마무리 장면을 끼워 넣지 않는다.
+        // 검증 버튼을 띄워도 해결 화면이 그 위를 덮어 누를 수 없다.
+        if (dockingController != null && dockingController.completeImmediatelyOnSuccess) return;
 
         _finalePlayed = true;
         if (dockingController.selectionPanel != null)
@@ -139,13 +134,12 @@ public class P53QuestDirector : MonoBehaviour
         BuildDnaScene();
         yield return Fade(1f, 0f);
 
-        yield return TetramerConvergeRoutine();
-        if (_dnaRoot != null)
-            MutationExperimentEffects.Play(_dnaRoot.transform, Vector3.zero, dnaHelixLength * .65f, "shield");
+        if (hud != null) hud.SetDnaBindingCompetent(true);
         if (dockingController != null && dockingController.selectionPanel != null)
             dockingController.selectionPanel.Experiment.FinishVerification("37°C · 처리 전후 비교: 흔들림 감소 / DNA 결합 회복");
-        // Let the shield trace and evidence stamp finish before completion can return to the quest board.
-        yield return new WaitForSeconds(3f);
+        // The success shield belongs exclusively to the common completion screen.
+        yield return new WaitForSeconds(1.5f);
+        if (_dnaRoot != null) _dnaRoot.SetActive(false);
         if (dockingController != null) dockingController.CompleteVerification();
 
         if (hud != null)
@@ -169,10 +163,9 @@ public class P53QuestDirector : MonoBehaviour
         yield return new WaitForSeconds(afterHoldSeconds);
     }
 
-    // --- 2) DNA / Tetramer ---
+    // --- 2) DNA ---
 
     private GameObject _dnaRoot;
-    private readonly List<Transform> _tetramerSubunits = new List<Transform>();
 
     private void BuildDnaScene()
     {
@@ -186,7 +179,6 @@ public class P53QuestDirector : MonoBehaviour
         _dnaRoot.transform.rotation = Quaternion.LookRotation(dbdAnchor.forward, Vector3.up);
 
         BuildDnaHelix(_dnaRoot.transform);
-        BuildTetramerSubunits(_dnaRoot.transform);
     }
 
     /// <summary>단순화한 이중나선 — 두 가닥(구슬 사슬)과 그 사이를 잇는 염기쌍(가는 실린더).
@@ -217,72 +209,6 @@ public class P53QuestDirector : MonoBehaviour
             if (i % 2 == 0)
                 SpawnRod(parent, a, b, 0.018f, dnaBasePairColor, backboneMat);
         }
-    }
-
-    private void BuildTetramerSubunits(Transform dnaParent)
-    {
-        _tetramerSubunits.Clear();
-
-        // "dimer-of-dimers" — DNA 응답요소 양옆에 2개씩, 대칭으로 배치한다.
-        Vector3[] targetOffsets =
-        {
-            new Vector3(0.55f, 0.5f, 0f), new Vector3(0.55f, -0.5f, 0f),
-            new Vector3(-0.55f, 0.5f, 0f), new Vector3(-0.55f, -0.5f, 0f),
-        };
-
-        for (int i = 0; i < targetOffsets.Length; i++)
-        {
-            GameObject sub = GameObject.CreatePrimitive(PrimitiveType.Sphere);
-            sub.name = $"DBD_Subunit_{i}";
-            Object.Destroy(sub.GetComponent<Collider>());
-            sub.transform.SetParent(dnaParent, false);
-            sub.transform.localScale = Vector3.one * 0.32f;
-
-            var renderer = sub.GetComponent<Renderer>();
-            RuntimeMaterials.ApplySolid(sub);
-            var mpb = new MaterialPropertyBlock();
-            mpb.SetColor("_BaseColor", tetramerColor);
-            mpb.SetColor("_EmissionColor", tetramerColor * 0.4f);
-            renderer.SetPropertyBlock(mpb);
-            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-
-            // 시작 위치는 목표에서 바깥으로 밀어둔다 — 수렴하며 다가오는 연출을 위해
-            sub.transform.localPosition = targetOffsets[i] * 3f;
-
-            _tetramerSubunits.Add(sub.transform);
-        }
-
-        // 목표 위치는 Rotate 애니메이션 코루틴에서 참조할 수 있게 로컬 데이터로 들고 있는다
-        _tetramerTargets = targetOffsets;
-    }
-
-    private Vector3[] _tetramerTargets;
-
-    private IEnumerator TetramerConvergeRoutine()
-    {
-        if (_tetramerSubunits.Count == 0 || _tetramerTargets == null) yield break;
-
-        var starts = new Vector3[_tetramerSubunits.Count];
-        for (int i = 0; i < _tetramerSubunits.Count; i++)
-            starts[i] = _tetramerSubunits[i].localPosition;
-
-        float elapsed = 0f;
-        while (elapsed < tetramerConvergeDuration)
-        {
-            elapsed += Time.deltaTime;
-            float k = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(elapsed / tetramerConvergeDuration));
-            for (int i = 0; i < _tetramerSubunits.Count; i++)
-            {
-                if (_tetramerSubunits[i] == null) continue;
-                _tetramerSubunits[i].localPosition = Vector3.Lerp(starts[i], _tetramerTargets[i], k);
-            }
-            yield return null;
-        }
-
-        for (int i = 0; i < _tetramerSubunits.Count; i++)
-            if (_tetramerSubunits[i] != null) _tetramerSubunits[i].localPosition = _tetramerTargets[i];
-
-        if (hud != null) hud.SetDnaBindingCompetent(true);
     }
 
     // --- 작은 헬퍼: 장식용 프리미티브 ---

@@ -162,7 +162,9 @@ public sealed class OralCheckPanel : MonoBehaviour
             !_brain.OralIsRecording && !_brain.OralIsTranscribing;
         _retry.interactable = answering && !_brain.OralIsTranscribing;
         _skipLabel.text = phase == OralCheckPhase.Completed ? "노트 닫기" : "지금은 넘어가기";
-        _skip.interactable = phase != OralCheckPhase.Completed || !_brain.IsOralCheckActive;
+        // 결과가 나온 뒤에는 언제나 닫을 수 있다. 판정은 이미 끝났고 남은 것은 비서의 낭독뿐인데,
+        // 그것까지 기다리게 하면 결합에 성공하고도 몇 초 동안 버튼이 죽은 채로 남는다.
+        _skip.interactable = true;
         _hint.text = _brain.OralIsRecording ? "듣고 있어요 · 기존 마이크 버튼을 다시 누르면 확인" :
             _brain.OralIsTranscribing ? "말을 글로 옮기고 있어요." :
             answering ? (_brain.OralSecondsRemaining < 15f
@@ -200,6 +202,10 @@ public sealed class OralCheckPanel : MonoBehaviour
         button.targetGraphic = image;
         text = TextAt("Label", rect, 0, 0, width, 36, 17, color == Accent ? new Color(0.02f, 0.10f, 0.12f) : Ink);
         text.alignment = TextAnchor.MiddleCenter;
+        // TextAt은 글자를 넣지 않는다(Label만 넣는다). 여기서 채우지 않으면 label은 오브젝트
+        // 이름으로만 남고 버튼은 글씨 없는 빈 칸이 된다 — 넘어가기 버튼만 LateUpdate에서
+        // 따로 글자를 넣어 주어 멀쩡해 보였다.
+        text.text = label;
         return button;
     }
 

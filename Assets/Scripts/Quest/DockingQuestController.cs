@@ -37,6 +37,13 @@ public class DockingQuestController : MonoBehaviour
              "HUD(Surface CFTR/Channel activity) 갱신을 맡긴다. 비우면 무시된다.")]
     public CftrRescueController cftr;
 
+    [Header("완료 처리")]
+    [Tooltip("켜면 단계를 끝내는 후보가 성공한 즉시 '사건 해결' 화면으로 넘어간다. " +
+             "끄면 예전처럼 '기능 검증' 버튼을 눌러 검증 연출(사건 4·5는 마무리 장면)을 본 뒤 완료된다.")]
+    public bool completeImmediatelyOnSuccess = true;
+    [Tooltip("성공 기록이 실험 노트에 올라온 것을 읽을 시간. 이 시간이 지나면 해결 화면으로 넘어간다.")]
+    public float completionDelaySeconds = 0.8f;
+
     [Header("타깃 부위 (res_id는 로드된 구조 JSON 기준 — QuestCatalog 사용 시 퀘스트 JSON이 덮어씀)")]
     [Tooltip("공유결합 대상 잔기 — KRAS G12C의 Cys12")]
     public int targetResidueId = 12;
@@ -303,31 +310,32 @@ public class DockingQuestController : MonoBehaviour
             case DockingOutcome.NoWarhead:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                PlayMutationContact(pocketCenter, outcome == DockingOutcome.UnstableBinding ? "unstable" : "unbound");
                 PlayMutationContact(pocketCenter, "break", clone.transform);
                 yield return Shake(clone.transform, 0.5f, 0.02f); // 고정되지 않고 흔들림
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.2f, 0.5f, spin: true); // 튕겨 나옴
-                FinishFailure(slot, clone, noWarheadColor, outcome);
+                yield return FinishFailure(slot, clone, noWarheadColor, outcome);
                 break;
 
             case DockingOutcome.StericClash:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 Vector3 clashPoint = Vector3.Lerp(entrance, pocketCenter, Mathf.Clamp01(slot.Data.clash_depth));
                 yield return MoveTo(clone.transform, clashPoint, 0.45f, spin: false);
-                PlayMutationContact(clashPoint, "repel");
+                PlayMutationContact(clashPoint, "collision");
                 selectionPanel.Experiment.SetPhase("충돌 · 표시된 부위와 후보의 폭을 비교하세요");
                 StartCoroutine(BurstEffect(clashPoint, failColor, 0.3f, 0.9f));
                 yield return Shake(clone.transform, 0.6f, 0.035f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 0.9f, 0.4f, spin: false);
-                FinishFailure(slot, clone, failColor, outcome);
+                yield return FinishFailure(slot, clone, failColor, outcome);
                 break;
 
             case DockingOutcome.OffTarget:
                 // 접근 도중 자석 반발: 입구 60% 지점에서 감속 후 밀려남
                 Vector3 repelPoint = Vector3.Lerp(clone.transform.position, entrance, 0.6f);
                 yield return MoveTo(clone.transform, repelPoint, approachDuration * 0.7f, spin: true);
-                PlayMutationContact(repelPoint, "repel");
+                PlayMutationContact(repelPoint, "repulsion");
                 yield return Repel(clone.transform, (repelPoint - pocketCenter).normalized, 1.5f, 0.8f);
-                FinishFailure(slot, clone, failColor, outcome);
+                yield return FinishFailure(slot, clone, failColor, outcome);
                 break;
 
             // --- p53 Y220C 열안정성 퀘스트 전용 (같은 Snap 판정 + 결과별 짧은 VFX/HUD만 다르다) ---
@@ -335,37 +343,41 @@ public class DockingQuestController : MonoBehaviour
             case DockingOutcome.PartialRecovery:
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                PlayMutationContact(pocketCenter, "partial");
                 selectionPanel.Experiment.SetPhase("부분 회복 · 표면의 CFTR 양을 확인하세요");
                 yield return BurstEffect(pocketCenter, noWarheadColor, 0.22f, 0.8f);
-                FinishFailure(slot, clone, noWarheadColor, outcome);
+                yield return FinishFailure(slot, clone, noWarheadColor, outcome);
                 break;
 
             case DockingOutcome.DegradationBlocked:
                 // A pathway intervention is not a molecule colliding with the CFTR pocket.
+                PlayMutationContact(clone.transform.position, "blocked");
                 selectionPanel.Experiment.SetPhase("분해 경로 변화 · 접힘은 회복됐을까요?");
                 yield return new WaitForSeconds(0.7f);
-                FinishFailure(slot, clone, noWarheadColor, outcome);
+                yield return FinishFailure(slot, clone, noWarheadColor, outcome);
                 break;
 
             case DockingOutcome.FragmentHit:
                 // 포켓엔 들어가 잠깐 안정화 효과가 보이지만, 오래 붙어있지 못하고 이탈한다.
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
+                PlayMutationContact(pocketCenter, "fragment");
                 if (hud != null) hud.SetStability(0.35f, "낮음 (잠깐 붙었다 떨어짐)");
                 PlayMutationContact(pocketCenter, "break", clone.transform);
                 yield return new WaitForSeconds(0.8f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.1f, 0.6f, spin: true);
-                FinishFailure(slot, clone, noWarheadColor, outcome);
+                yield return FinishFailure(slot, clone, noWarheadColor, outcome);
                 if (thermal != null) thermal.SetTemperature(thermal.CurrentCelsius); // HUD를 온도 기준값으로 되돌림
                 break;
 
             case DockingOutcome.WrongStrategy:
                 // 이 포켓과 무관한 전략(예: MDM2 억제제) — 애초에 포켓에 들어가지 않고 입구에서 흩어진다.
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                PlayMutationContact(entrance, "mismatch");
                 yield return Shake(clone.transform, 0.5f, 0.03f);
                 if (hud != null) hud.SetP53Quantity(0.8f); // p53 총량은 늘지만
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.3f, 0.5f, spin: true);
-                FinishFailure(slot, clone, failColor, outcome); // stability/wobble/DNA 결합능은 그대로 — 회복되지 않는다
+                yield return FinishFailure(slot, clone, failColor, outcome); // stability/wobble/DNA 결합능은 그대로 — 회복되지 않는다
                 break;
 
             case DockingOutcome.NoStabilization:
@@ -373,32 +385,36 @@ public class DockingQuestController : MonoBehaviour
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
                 yield return MoveTo(clone.transform, pocketCenter, 0.6f, spin: false);
                 Vector3 proximityPos = _targetSulfur != null ? _targetSulfur.transform.position : pocketCenter;
+                PlayMutationContact(proximityPos, "unbound");
                 yield return BurstEffect(proximityPos, new Color(1f, 0.7f, 0.3f), 0.3f, 0.4f);
                 yield return new WaitForSeconds(0.4f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 1.0f, 0.5f, spin: true);
-                FinishFailure(slot, clone, noWarheadColor, outcome); // wobble 유지 = 안정화 실패
+                yield return FinishFailure(slot, clone, noWarheadColor, outcome); // wobble 유지 = 안정화 실패
                 break;
 
             case DockingOutcome.NonSelective:
                 // 이 포켓뿐 아니라 주변 다른 자리에도 동시에 비특이적 결합 마커가 나타난다.
                 yield return MoveTo(clone.transform, entrance, approachDuration, spin: true);
+                PlayMutationContact(pocketCenter, "scattered");
                 StartCoroutine(BurstEffect(pocketCenter + Vector3.up * 0.6f, failColor, 0.28f, 0.5f));
                 StartCoroutine(BurstEffect(pocketCenter - proteinLoader.transform.right * 0.8f, failColor, 0.28f, 0.5f));
                 if (hud != null) hud.ShowWarning("표적이 아닌 곳에도 마구 붙었어요 — 부작용 위험");
                 yield return Shake(clone.transform, 0.4f, 0.02f);
                 yield return MoveTo(clone.transform, entrance + outward.normalized * 0.9f, 0.4f, spin: true);
-                FinishFailure(slot, clone, failColor, outcome);
+                yield return FinishFailure(slot, clone, failColor, outcome);
                 break;
         }
     }
 
-    // --- 성공 연출: 섬광 → 공유결합 → 락인 ---
+    // --- 성공 연출: 레이저 방출 → 공유결합 → 락인 ---
     private IEnumerator SuccessSequence(CompoundSlot slot, GameObject clone, Vector3 pocketCenter)
     {
         Vector3 sulfurPos = _targetSulfur != null ? _targetSulfur.transform.position : pocketCenter;
 
-        // Cys12 황(S) 원자 섬광
-        yield return BurstEffect(sulfurPos, Color.white, 0.45f, 0.5f);
+        PlayMutationContact(sulfurPos, "successRays");
+
+        // Preserve the binding beat without the opaque, darkening burst sphere.
+        yield return new WaitForSeconds(0.5f);
 
         // Warhead 원자 ↔ S 원자 공유결합 실린더 생성
         Transform warhead = FindWarhead(clone);
@@ -438,6 +454,15 @@ public class DockingQuestController : MonoBehaviour
         yield return new WaitForSeconds(0.65f);
         selectionPanel.Experiment.Record(slot.Data, successColor, false);
         _succeededCompoundIds.Add(slot.Data.id);
+        // The corrector replaces the CFTR structure. Its old pocket coordinates no longer
+        // identify a binding site on the replacement, so retire the presentation clone
+        // before the swap instead of leaving it floating beside the new structure.
+        if (_questId == "cftr_f508del" && slot.Data.id == "corrector_pair" && clone != null)
+        {
+            _questSpawned.Remove(clone);
+            clone.SetActive(false);
+            UnityEngine.Object.Destroy(clone);
+        }
         if (cftr != null) cftr.HandleCompoundSuccess(slot.Data.id);
 
         // completes_stage가 false인 화합물(예: CFTR corrector)은 그 자체로는 충분하지 않다 —
@@ -461,12 +486,44 @@ public class DockingQuestController : MonoBehaviour
             Prediction = _attemptPrediction,
             Message = slot.Data.result_message,
         });
-        bool hasDedicatedVerification =
-            (_questId == "p53_y220c" && FindFirstObjectByType<P53QuestDirector>() != null) ||
-            (_questId == "cftr_f508del" && FindFirstObjectByType<CftrFinaleController>() != null);
-        if (slot.Data.completes_stage && !hasDedicatedVerification)
-            selectionPanel.Experiment.OfferVerification("기능 변화 검증", () => StartCoroutine(VerifySignalRoutine()));
-        // 성공 시 clone은 포켓에 그대로 남긴다 (KRAS OFF 락인 상태 / CFTR 락인 상태)
+        if (slot.Data.completes_stage)
+        {
+            if (completeImmediatelyOnSuccess)
+            {
+                // 사건이 풀린 순간 바로 해결 화면으로 넘어간다. 검증 버튼을 한 번 더 누르게 하거나
+                // 마무리 연출을 끼워 넣지 않는다 — 성공 판정과 해결 화면 사이가 비어 있으면
+                // 학습자가 "무엇을 해결했는지"를 결과 화면에서 곧바로 잇지 못한다.
+                StartCoroutine(CompleteAfterSuccessRoutine());
+            }
+            else
+            {
+                bool hasDedicatedVerification =
+                    (_questId == "p53_y220c" && FindFirstObjectByType<P53QuestDirector>() != null) ||
+                    (_questId == "cftr_f508del" && FindFirstObjectByType<CftrFinaleController>() != null);
+                if (!hasDedicatedVerification)
+                    selectionPanel.Experiment.OfferVerification("기능 변화 검증", () => StartCoroutine(VerifySignalRoutine()));
+            }
+        }
+        // 구조 교체용 CFTR corrector를 제외한 성공 clone은 포켓의 락인 상태로 유지한다.
+    }
+
+    /// <summary>
+    /// 성공 직후 사건을 끝낸다.
+    ///
+    /// 서술 확인(구술 퀴즈)이 떠 있으면 그것만 기다린다. 해결 화면은 화면 전체를 덮으므로
+    /// 먼저 띄우면 학습자가 답하던 노트가 그 아래로 사라진다.
+    /// </summary>
+    private IEnumerator CompleteAfterSuccessRoutine()
+    {
+        yield return new WaitForSeconds(completionDelaySeconds);
+
+        // 노트가 닫힐 때까지(학습자가 결과를 읽고 넘어갈 때까지) 기다린다. 채점이 끝나면
+        // IsOralCheckActive는 곧바로 꺼지지만 결과 노트는 그대로 떠 있으므로 이것만 보면 이르다.
+        var brain = FindFirstObjectByType<AIAssistantBrain>();
+        while (brain != null && (brain.IsOralCheckActive || brain.OralPhase != OralCheckPhase.Hidden))
+            yield return null;
+
+        CompleteVerification();
     }
 
     public void CompleteVerification()
@@ -501,6 +558,7 @@ public class DockingQuestController : MonoBehaviour
         StartCoroutine(BurstEffect(pocketCenter, pocketHighlightColor, 0.4f, 0.5f));
         yield return Shake(clone.transform, 0.35f, 0.015f);
         yield return MoveTo(clone.transform, pocketCenter + outward.normalized * (entranceOffset + 0.3f), 0.4f, spin: true);
+        yield return EjectFailedCompound(clone);
         UnityEngine.Object.Destroy(clone);
 
         StopPocketPulse();
@@ -527,18 +585,22 @@ public class DockingQuestController : MonoBehaviour
 
     private void PlayMutationContact(Vector3 point, string kind, Transform molecule = null)
     {
-        if (selectionPanel == null || !selectionPanel.zoomOverrideActive || proteinLoader == null) return;
+        bool successRays = kind == "successRays";
+        if (proteinLoader == null) return;
+        if (!successRays && (selectionPanel == null || !selectionPanel.zoomOverrideActive)) return;
         Transform root = proteinLoader.transform;
-        GameObject cue = MutationExperimentEffects.Play(root, root.InverseTransformPoint(point), .22f, kind, molecule);
+        GameObject cue = MutationExperimentEffects.Play(root, root.InverseTransformPoint(point),
+            successRays ? .45f : .22f, kind, molecule);
         if (cue != null)
         {
-            AminoAcidOnlyVisual.Mark(cue, levelController);
+            if (!successRays) AminoAcidOnlyVisual.Mark(cue, levelController);
             _questSpawned.Add(cue);
         }
     }
 
-    private void FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)
+    private IEnumerator FinishFailure(CompoundSlot slot, GameObject clone, Color color, DockingOutcome outcome)
     {
+        yield return EjectFailedCompound(clone);
         StopPocketPulse();
         ApplyPocketMarker(); // 완전히 원래 색으로 되돌리면 다시 "끊긴 원자"처럼 보이므로 표시색을 유지한다
         UnityEngine.Object.Destroy(clone);
@@ -555,6 +617,43 @@ public class DockingQuestController : MonoBehaviour
             Prediction = _attemptPrediction,
             Message = slot.Data.result_message,
         });
+    }
+
+    /// <summary>Use the camera edge, not a fixed world offset, so rejected molecules fully leave view.</summary>
+    private IEnumerator EjectFailedCompound(GameObject clone)
+    {
+        if (clone == null) yield break;
+        Camera cam = Camera.main;
+        if (cam == null) yield break; // FinishFailure still destroys the attempt without a camera.
+        Transform molecule = clone.transform;
+        Vector3 start = molecule.position;
+        float radius = .05f;
+        foreach (Renderer renderer in clone.GetComponentsInChildren<Renderer>())
+            radius = Mathf.Max(radius, Vector3.Distance(start, renderer.bounds.center) + renderer.bounds.extents.magnitude);
+        Vector3 viewport = cam.WorldToViewportPoint(start);
+        float depth = Mathf.Max(viewport.z, cam.nearClipPlane + radius * 2f);
+        float side = viewport.x < .5f ? -1f : 1f;
+        float horizontalSlope = cam.orthographic ? 0f : Mathf.Tan(cam.fieldOfView * .5f * Mathf.Deg2Rad) * cam.aspect;
+        float exitMargin = radius * (1f + horizontalSlope) + depth * .15f;
+        const float duration = .55f;
+        for (float elapsed = 0f; elapsed < duration; elapsed += Time.deltaTime)
+        {
+            if (clone == null || cam == null) yield break;
+            // Allow for the entire rotating molecule, including atoms beyond its root.
+            Vector3 edge = cam.ViewportToWorldPoint(new Vector3(side < 0f ? 0f : 1f,
+                Mathf.Clamp(viewport.y, .15f, .85f), depth));
+            Vector3 target = edge + cam.transform.right * side * exitMargin;
+            float p = Mathf.Clamp01(elapsed / duration);
+            molecule.position = Vector3.Lerp(start, target, p * p);
+            molecule.Rotate(Vector3.up, 240f * Time.deltaTime, Space.Self);
+            yield return null;
+        }
+        if (clone != null && cam != null)
+        {
+            Vector3 edge = cam.ViewportToWorldPoint(new Vector3(side < 0f ? 0f : 1f,
+                Mathf.Clamp(viewport.y, .15f, .85f), depth));
+            molecule.position = edge + cam.transform.right * side * exitMargin;
+        }
     }
 
     // --- 이펙트/헬퍼 ---
