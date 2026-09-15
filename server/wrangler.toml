@@ -1,0 +1,25 @@
+name = "taming-mutants-proxy"
+main = "src/worker.js"
+compatibility_date = "2026-08-01"
+
+# 키는 여기에 적지 않는다. wrangler secret put 으로 넣으면 Cloudflare에만 저장되고
+# 이 파일에는 흔적이 남지 않는다:
+#   wrangler secret put UPSTAGE_API_KEY
+#   wrangler secret put OPENAI_API_KEY
+#   wrangler secret put APP_TOKEN
+
+# 도킹 계산 서비스(server/docking)를 Cloudflare Containers로 배포한다. Workers Paid 플랜과
+# 로컬 Docker가 필요하다(wrangler deploy가 이미지를 빌드해 올린다). 인스턴스는 항상 하나다.
+[[containers]]
+class_name = "DockingContainer"
+image = "./docking/Dockerfile"
+max_instances = 1
+instance_type = "standard-3"   # 2 vCPU — chemistry.py의 vina --cpu 2 와 맞춘다
+
+[[durable_objects.bindings]]
+name = "DOCKING"
+class_name = "DockingContainer"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DockingContainer"]

@@ -44,8 +44,36 @@ def fetch_alphafold(uniprot_id: str, out_dir: str = "structures") -> tuple[str, 
     return path, meta
 
 
+def fetch_rcsb(pdb_id: str, out_dir: str = "structures") -> str:
+    """AlphaFold 예측이 아니라 RCSB에 등록된 실제(실험) 구조를 그대로 받는다.
+    예: 8EJ1/8EIQ 같은 cryo-EM CFTR 구조 — AlphaFold는 리간드 결합/구조 교정 상태를
+    예측하지 못하므로, 이런 상태를 표현하려면 실제 결정/cryo-EM 구조가 필요하다."""
+    os.makedirs(out_dir, exist_ok=True)
+
+    print(f"[1/4] RCSB 구조 파일 다운로드: {pdb_id}")
+    resp = requests.get(f"https://files.rcsb.org/download/{pdb_id}.pdb", timeout=60)
+    resp.raise_for_status()
+
+    path = os.path.join(out_dir, f"{pdb_id}.pdb")
+    with open(path, "w") as f:
+        f.write(resp.text)
+    print(f"      -> 저장됨: {path} ({len(resp.text)} bytes)")
+    return path
+
+
+def _in_ranges(res_id: int, residue_range) -> bool:
+    """단일 (start, end) 튜플과 여러 구간(list of tuple) 모두 지원한다.
+    예: CFTR은 NBD1(370-680)과 TMD2 ICL4(1030-1085)처럼 서열상 멀리 떨어진
+    두 도메인을 동시에 보여줘야 해서 단일 구간만으로는 부족하다."""
+    if not residue_range:
+        return True
+    ranges = residue_range if isinstance(residue_range, list) else [residue_range]
+    return any(lo <= res_id <= hi for lo, hi in ranges)
+
+
 def pdb_to_layered_json(pdb_path: str, out_json_path: str,
-                         residue_range: tuple[int, int] | None = None) -> None:
+                         residue_range=None,
+                         mutation_sites: tuple[int, ...] = ()) -> None:
     print(f"[3/4] PDB 파싱 및 JSON 변환: {pdb_path}")
     parser = PDBParser(QUIET=True)
     structure = parser.get_structure("protein", pdb_path)
@@ -54,7 +82,7 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
     for atom in structure.get_atoms():
         res = atom.get_parent()
         res_id = res.get_id()[1]
-        if residue_range and not (residue_range[0] <= res_id <= residue_range[1]):
+        if not _in_ranges(res_id, residue_range):
             continue  # 관심 영역(예: 키나아제 도메인)만 필터링
         raw_atoms.append((atom, res, res_id))
 
@@ -75,7 +103,7 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
             "res_name": res.get_resname(),
             "res_id": res_id,
             "is_backbone": atom.get_name() in ("N", "CA", "C", "O"),
-            "is_mutation_site": res_id in (858, 790),  # L858R, T790M 하이라이트용
+            "is_mutation_site": res_id in mutation_sites,
         })
     print(f"      -> 원자 {len(atoms)}개 파싱 완료")
 
@@ -98,11 +126,44 @@ def pdb_to_layered_json(pdb_path: str, out_json_path: str,
     print(f"      -> 정상 JSON 확인, atoms 개수: {len(loaded['atoms'])}")
 
 
+
+# 단백질별 전처리 설정: 관심 잔기 범위 / 변이 부위 하이라이트
+CONFIGS = {
+    "P00533": {"range": (712, 979), "mutations": (858, 790)},  # EGFR: L858R, T790M (키나아제 도메인)
+    "P01116": {"range": None, "mutations": (12,)},             # KRAS: G12C (F-04 도킹 퀘스트 타깃)
+    "P00519": {"range": (242, 506), "mutations": (315,)},      # ABL1: T315I gatekeeper (키나아제 도메인)
+}
+
+# RCSB에 등록된 실제 구조(실험 구조, UniProt/AlphaFold 아님) 전처리 설정.
+# 8EJ1/8EIQ는 F508del CFTR 구조라 508번 자리가 결실(deletion)로 아예 비어 있다 —
+# 그래서 508 대신 그 자리를 감싸는 507/509를 변이 표시 잔기로 쓴다.
+# range는 두 구간을 함께 담는다: NBD1(F508 루프 포함)과 TMD2 ICL4(NBD1과 접촉하는 계면) —
+# 서열상 멀리 떨어져 있지만 F508del의 folding/domain-assembly 결함을 보여주려면 둘 다 필요하다.
+# 원자 수는 두 구간을 합쳐도 다른 퀘스트와 비슷한 규모(수천 개 이하)로 유지된다.
+_CFTR_RANGE = [(370, 680), (1030, 1085)]
+RCSB_CONFIGS = {
+    "8EJ1": {"range": _CFTR_RANGE, "mutations": (507, 509)},  # F508del, corrector/potentiator 처리 전
+    "8EIQ": {"range": _CFTR_RANGE, "mutations": (507, 509)},  # F508del + Trikafta(Elexacaftor/Tezacaftor/Ivacaftor) 처리 후
+}
+
 if __name__ == "__main__":
-    UNIPROT_ID = "P00533"  # EGFR
+    import sys
+    ID = sys.argv[1] if len(sys.argv) > 1 else "P00533"
+
     try:
-        pdb_path, meta = fetch_alphafold(UNIPROT_ID)
-        pdb_to_layered_json(pdb_path, f"Assets/StreamingAssets/structures/{UNIPROT_ID}.json", residue_range=(712, 979))
+        if ID in RCSB_CONFIGS:
+            cfg = RCSB_CONFIGS[ID]
+            pdb_path = fetch_rcsb(ID)
+        else:
+            cfg = CONFIGS.get(ID, {"range": None, "mutations": ()})
+            pdb_path, _meta = fetch_alphafold(ID)
+
+        pdb_to_layered_json(
+            pdb_path,
+            f"Assets/StreamingAssets/structures/{ID}.json",
+            residue_range=cfg["range"],
+            mutation_sites=tuple(cfg["mutations"]),
+        )
         print("완료.")
     except Exception:
         print("전처리 중 오류 발생:")

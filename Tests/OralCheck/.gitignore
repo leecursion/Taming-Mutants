@@ -1,0 +1,3 @@
+bin/
+obj/
+!OralCheck.Tests.csproj

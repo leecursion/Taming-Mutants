@@ -1,0 +1,15 @@
+{
+  "id": "abl1_t315i",
+  "title": "ABL1 T315I 후보물질 도킹 — 내성 극복",
+  "protein_json": "structures/P00519.json",
+  "target_residue_id": 315,
+  "target_atom_name": "",
+  "pocket_residue_ids": [248, 256, 269, 271, 286, 315, 317, 318, 381, 382],
+  "compounds_folder": "compounds/abl1_t315i",
+  "compound_files": ["imatinib_like.json", "nilotinib_like.json", "dasatinib_like.json", "ponatinib_like.json", "asciminib_like.json"],
+  "entrance_offset": 0.85,
+  "helix_regions": [
+    {"label": "근접 αC Helix", "start_res_id": 275, "end_res_id": 296},
+    {"label": "촉매 루프 인접 Helix", "start_res_id": 350, "end_res_id": 365}
+  ]
+}
