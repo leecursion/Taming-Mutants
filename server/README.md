@@ -108,6 +108,78 @@ Invoke-RestMethod -Uri http://localhost:8787/api/co-scientist -Method Post `
 npx wrangler tail
 ```
 
+## 운영
+
+Worker와 도킹 컨테이너는 한 덩어리로 배포·관리한다. 아래 명령은 모두 `server/`에서 실행한다.
+
+```
+Unity 실행파일 ──► Worker (taming-mutants-proxy) ──┬─► Upstage Solar / OpenAI
+                                                    └─► 도킹 컨테이너 (필요할 때만 켜짐)
+```
+
+### 코드를 고쳤을 때
+
+```powershell
+npm test                                        # 테스트 통과 확인
+npx wrangler deploy                             # Worker + 컨테이너 이미지 빌드·배포 (Docker Desktop 실행 중이어야 함)
+npx wrangler deploy --containers-rollout=none   # src/*.js만 고쳤을 때 — Docker 불필요, 수 초
+```
+
+- `docking/*.py`나 Dockerfile을 건드렸으면 첫 번째, Worker 코드·프롬프트만 고쳤으면 두 번째.
+- Docker Desktop은 배포할 때만 켜면 된다.
+- 배포가 잘못됐으면 `npx wrangler rollback`으로 직전 버전으로 되돌린다
+  (`npx wrangler versions list`로 목록 확인).
+
+### 살아 있는지 확인 / 로그
+
+```powershell
+npx wrangler tail                        # 실시간 요청 로그. 오류 본문은 클라이언트에 안 보내니 여기서 본다
+npx wrangler containers list             # 컨테이너 앱 상태
+npx wrangler containers info <app-id>    # 인스턴스 상태·이미지
+```
+
+대시보드(dash.cloudflare.com → Workers & Pages → `taming-mutants-proxy`)의 **Containers** 탭에서
+컨테이너 인스턴스 상태와 stdout 로그(uvicorn/Vina 출력)를, **Metrics** 탭에서 요청 수·오류율을 본다.
+
+도킹이 안 될 때:
+
+| 증상 | 뜻 |
+|---|---|
+| `도킹 계산 서버가 연결되지 않았어요` (503) | Worker에 `DOCKING` 바인딩이 없다 — `wrangler.toml`이 잘못됐거나 컨테이너를 한 번도 올리지 않은 채 `--containers-rollout=none`으로 배포한 경우 |
+| `도킹 계산 서버에 연결하지 못했어요` (502) | 컨테이너가 안 뜬다 — Containers 탭 로그 확인. 이미지 문제면 `wrangler deploy` 다시 |
+| 첫 요청만 10~20초 느림 | 정상. 15분 유휴 후 잠들었다 깨는 시간 |
+| 401 | 클라이언트 `APP_TOKEN` 불일치 |
+
+### Secrets
+
+```powershell
+npx wrangler secret list
+npx wrangler secret put UPSTAGE_API_KEY    # 값 교체 — 재배포 없이 즉시 반영
+```
+
+사용하는 secret: `APP_TOKEN`, `UPSTAGE_API_KEY`, `OPENAI_API_KEY`, `DOCKING_SERVICE_TOKEN`.
+`APP_TOKEN`은 배포된 실행파일에 박혀 있으므로 바꾸는 순간 이미 나간 빌드의 AI 기능이 끊긴다 —
+새 빌드를 배포할 때만 함께 바꾼다.
+
+### 비용
+
+- Workers Paid(월 $5)에 컨테이너 vCPU 375분·메모리 25 GiB-시간이 포함된다. 2 vCPU 컨테이너가
+  **실제 깨어 있는 시간**만 세므로 시연 며칠이면 포함분 안팎, 넘어도 시간당 $0.2 수준.
+  대시보드 → Billing → Usage에서 확인.
+- 도킹을 내리려면 `wrangler.toml`에서 `[[containers]]`·`[[durable_objects.bindings]]`·`[[migrations]]`
+  블록을 지우고 `wrangler deploy`한다. 컨테이너 과금이 끝나고 Worker(대화·음성)는 그대로 동작한다.
+  다시 켜려면 블록을 되살려 재배포한다.
+
+### 로컬에서 테스트
+
+```powershell
+npx wrangler dev                          # Worker만 로컬(8787), .dev.vars의 키 사용
+.\Tests\Docking\Start-LocalDocking.ps1    # 도킹 서비스 + 로컬 프록시 (Editor 전용)
+```
+
+로컬에는 `DOCKING` 바인딩이 없어서 `DOCKING_SERVICE_URL` 경로로 자동 전환된다.
+배포 코드와 로컬 코드는 같은 파일이다.
+
 ## 설계 메모
 
 - **모델은 서버가 정한다.** 클라이언트가 보낸 `model` 값은 무시한다. URL이 알려졌을 때
