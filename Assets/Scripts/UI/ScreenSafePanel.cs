@@ -7,6 +7,7 @@ public class ScreenSafePanel : MonoBehaviour
     private readonly Vector3[] _corners = new Vector3[4];
     private RectTransform _rect;
     private Vector3 _scale;
+    [Range(0f,.4f)] public float bottomReserveFraction;
 
     private void Awake() { _rect = GetComponent<RectTransform>(); _scale = transform.localScale; }
 
@@ -15,6 +16,7 @@ public class ScreenSafePanel : MonoBehaviour
         if (_rect == null) return;
         transform.localScale = _scale;
         Rect safe = Screen.safeArea;
+        safe.yMin=Mathf.Max(safe.yMin,Screen.height*bottomReserveFraction);
         const float margin = 20f;
         safe = Rect.MinMaxRect(safe.xMin + margin, safe.yMin + margin, safe.xMax - margin, safe.yMax - margin);
         _rect.GetWorldCorners(_corners);

@@ -18,7 +18,7 @@ async function invoke(query,fetcher,options={}) {
  const old=globalThis.fetch; globalThis.fetch=fetcher;
  try { return await worker.fetch(new Request('https://test/api/molecule-resolve',{
   method:'POST',headers:{'Content-Type':'application/json','X-App-Token':options.token??'test'},
-  body:JSON.stringify({query,current:options.current,history:options.history,pendingChoices:options.pendingChoices})}),options.env??env); }
+  body:JSON.stringify({query,current:options.current,history:options.history,pendingChoices:options.pendingChoices,choiceKind:options.choiceKind})}),options.env??env); }
  finally { globalThis.fetch=old; }
 }
 function mockSearch(intent,candidates,choice,events=[]) {
@@ -264,6 +264,15 @@ test('malformed output is repaired once; transport failures are not blamed on ph
 test('clarification explains a real limitation without creating wrong geometry',async()=>{
  const result=await (await invoke('카페인',()=>llm({action:'clarify',message:'자유 소분자 렌더러는 아직 연결되지 않았어요. 결합 단백질을 찾아볼 수 있어요.'}))).json();
  assert.equal(result.action,'clarify'); assert.equal(result.spec,undefined);
+});
+test('candidate suggestions preserve receptor and numbered selection loads a ligand without protein search',async()=>{
+ const choices=['aspirin','caffeine','ibuprofen'];
+ const result=await (await invoke('도킹 후보 추천',()=>llm({action:'candidate_choices',choices,message:'비교 실험 후보예요.'}),{current})).json();
+ assert.equal(result.action,'candidate_choices'); assert.deepEqual(result.choices,choices); assert.equal(result.spec,undefined);
+ const selected=await (await invoke('2번 것으로 보여줘',()=>{throw Error('Selection must not re-search the protein');},
+  {current,pendingChoices:choices,choiceKind:'ligand'})).json();
+ assert.equal(selected.action,'load_ligand'); assert.equal(selected.ligandQuery,'caffeine'); assert.equal(selected.spec,undefined);
+ assert.throws(()=>validateIntent({action:'candidate_choices',choices:[]}));
 });
 test('bundled representative coordinates and catalog remain in sync',()=>{
  const cs=fs.readFileSync(new URL('../Assets/Scripts/Protein/MoleculeCatalog.cs',import.meta.url),'utf8');

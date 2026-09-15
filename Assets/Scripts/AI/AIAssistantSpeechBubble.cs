@@ -598,6 +598,9 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         float meters = metersPerCanvasUnit;
         if (constantApparentSize && referenceDistance > 1e-3f)
             meters *= CameraDistance() / referenceDistance;
+        // Fit the reserved right column directly, without fighting the parent's body scale.
+        if (MoleculeExplorationController.Active != null && MoleculeExplorationController.Active.IsDockingOpen)
+            meters *= Mathf.Min(1f, .20f / Mathf.Max(screenWidthFraction, .001f));
 
         Transform parent = transform.parent;
         float parentScale = parent != null ? parent.lossyScale.x : 1f;

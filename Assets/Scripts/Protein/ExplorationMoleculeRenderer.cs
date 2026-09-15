@@ -18,6 +18,11 @@ public class ExplorationMoleculeRenderer : MonoBehaviour
     readonly List<Material> _materials = new List<Material>();
     List<ExplorationAtom> _atoms;
     Vector3 _center;
+    Vector3 _geometryOffset;
+    public Vector3 PdbToLocal(Vector3 angstroms) => angstroms*.1f-_center-_geometryOffset;
+    public Vector3? PreferredFocus;
+    public bool HideBoundLigands;
+    public Bounds DisplayBounds { get; private set; }
     static readonly Color[] Palette = { new Color(.2f,.85f,.95f), new Color(1,.58f,.28f), new Color(.6f,.45f,1) };
 
     public IEnumerator Build(List<ExplorationAtom> source, MoleculeViewSpec spec, string view)
@@ -49,11 +54,18 @@ public class ExplorationMoleculeRenderer : MonoBehaviour
             var nearby=new HashSet<string>(ranked);
             residues=residues.Where(nearby.Contains).ToList();
         }
+        if(PreferredFocus.HasValue)
+        {
+            var nearby=new HashSet<string>(selected.Where(a=>!a.hetero && a.name=="CA" && residues.Contains(a.residueKey))
+                .OrderBy(a=>(a.position-PreferredFocus.Value).sqrMagnitude).Take(ResidueLimit).Select(a=>a.residueKey));
+            residues=residues.Where(nearby.Contains).ToList();
+        }
         var allowed = new HashSet<string>(residues.Take(ResidueLimit));
         var protein = selected.Where(a => !a.hetero && allowed.Contains(a.residueKey)).ToList();
         _center = protein.Aggregate(Vector3.zero,(v,a) => v+a.position) / protein.Count * .1f;
         var ligand = focusLigand ?? selected.Where(a => a.hetero && protein.Any(p => (p.position-a.position).sqrMagnitude < 36f))
             .Take(80).ToList();
+        if(HideBoundLigands && view!="ligand") ligand=new List<ExplorationAtom>();
         _atoms = protein.Concat(ligand).ToList();
         DisplayedResidues = allowed.Count;
         DisplayScope = "체인 " + string.Join(", ",chains) + $" · {allowed.Count} 잔기";
@@ -61,6 +73,7 @@ public class ExplorationMoleculeRenderer : MonoBehaviour
         int total=selected.Where(a=>!a.hetero && a.name=="CA").Select(a=>a.residueKey).Distinct().Count();
         if(total>allowed.Count) DisplayScope += $" · 체인 전체 {total}잔기 중 일부";
         if(residues.Count>allowed.Count) DisplayScope += " · 표시량 제한 적용";
+        if(HideBoundLigands && view!="ligand") DisplayScope += " · 기존 결합 분자 제외";
         if(view=="ligand")
         {
             BuildAtoms(ligand);
@@ -75,7 +88,7 @@ public class ExplorationMoleculeRenderer : MonoBehaviour
         DisplayedAtoms = 0;
         if (view == "atoms")
         {
-            Vector3 focus = ligand.Count > 0 ? ligand[0].position : protein[protein.Count/2].position;
+            Vector3 focus = PreferredFocus??(ligand.Count > 0 ? ligand[0].position : protein[protein.Count/2].position);
             var detail = _atoms.OrderBy(a => (a.position-focus).sqrMagnitude).Take(AtomLimit).ToList();
             BuildAtoms(detail);
             DisplayScope += " · 선택 부근의 가까운 원자만 표시";
@@ -189,6 +202,8 @@ public class ExplorationMoleculeRenderer : MonoBehaviour
         var bounds=new Bounds(); bool first=true;
         foreach(var mesh in _meshes) { if(first) { bounds=mesh.bounds; first=false; } else bounds.Encapsulate(mesh.bounds); }
         foreach(Transform child in transform) child.localPosition=-bounds.center;
+        _geometryOffset=bounds.center;
+        DisplayBounds=new Bounds(Vector3.zero,bounds.size);
         float size=Mathf.Max(bounds.size.x,Mathf.Max(bounds.size.y,bounds.size.z));
         transform.localScale=Vector3.one*(1f/Mathf.Max(.1f,size));
     }
