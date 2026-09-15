@@ -31,6 +31,11 @@ public class IntroDirector : MonoBehaviour
     [Tooltip("비워두면 Camera.main")]
     public Camera targetCamera;
 
+    [Header("AI 분자 탐색 배경")]
+    [Tooltip("AI 분자 탐색으로 들어갈 때 카메라가 도착할 레벨. 사건을 골랐을 때 첫 단계가 가는 곳과 " +
+             "같은 Level2_Protein이 기본값이다 — 두 모드의 진입 연출이 같아야 한다.")]
+    public QuestLevel explorationLevel = QuestLevel.Level2_Protein;
+
     [Header("퀘스트 시작 후 비서가 머물 대상")]
     [Tooltip("보통 ProteinAnchor_Main. 지정하면 퀘스트 시작과 함께 비서가 분자 옆으로 옮겨간다.")]
     public Transform questAnchor;
@@ -122,9 +127,57 @@ public class IntroDirector : MonoBehaviour
         if (session != null) session.OnQuestCompleted -= HandleQuestCompleted;
     }
 
+    public void PrepareModeSelection()
+    {
+        StopAllCoroutines();
+        IsRunning = false;
+        _chosen = null;
+        if (board != null) board.Hide();
+        HideStage();
+        PlaceAssistantForIntro();
+        if (assistant != null) assistant.ResetConversation();
+        if (fadeOverlay != null) { fadeOverlay.alpha = 0; fadeOverlay.blocksRaycasts = false; }
+    }
+
+    /// <summary>
+    /// AI 분자 탐색으로 들어갈 때의 배경 전환. 사건을 골랐을 때와 똑같이
+    /// <see cref="CameraTransitionDirector"/>로 연구실(Level0)에서 분자 무대로 파고든다 —
+    /// 같은 길을 같은 컴포넌트로 지나가므로 워프 파티클·모션 블러·음향과 비서 감추기
+    /// (<see cref="QuestLevelBinder"/>)까지 그대로 따라온다.
+    ///
+    /// 무대 자체는 <see cref="HideStage"/>로 꺼둔 채다. 사건의 단백질이 켜져 있으면
+    /// 탐색으로 불러온 분자 뒤에 엉뚱한 구조가 같이 서 있게 된다.
+    /// </summary>
+    public void EnterExplorationStage()
+    {
+        if (cameraDirector == null) return;
+
+        // 돌아올 자리를 지금 찍어둔다. 사건 쪽에서 HandleQuestSelected가 하는 일과 같다.
+        cameraDirector.CaptureLabEntryPose();
+        cameraDirector.GoToCameraOnly(explorationLevel);
+    }
+
+    /// <summary>
+    /// 모드 선택으로 돌아올 때. 사건을 접고 나올 때(ReturnToQuestSelectionRoutine)와 같은
+    /// 후퇴 연출로 연구실 시점(Level0)까지 빠져나온다.
+    /// </summary>
+    public void ReturnToLabStage()
+    {
+        if (cameraDirector != null) cameraDirector.GoTo(QuestLevel.Level0_Body);
+    }
+
+    /// <summary>카메라가 레벨 사이를 건너는 중인지. 탐색 모드가 분자를 세울 자리를 정하기 전에 본다.</summary>
+    public bool IsStageTransitioning => cameraDirector != null && cameraDirector.IsTransitioning;
+
     private void Start()
     {
-        if (playOnStart) Play();
+        if (playOnStart)
+        {
+            var exploration = GetComponent<MoleculeExplorationController>();
+            if (exploration == null) exploration = gameObject.AddComponent<MoleculeExplorationController>();
+            exploration.Initialize(this);
+            exploration.ShowModeSelection();
+        }
     }
 
     /// <summary>인트로를 처음부터 재생한다.</summary>
@@ -413,6 +466,11 @@ public class IntroDirector : MonoBehaviour
     private IEnumerator SelectAndStartQuestRoutine()
     {
         if (beatBeforeBoard > 0f) yield return new WaitForSeconds(beatBeforeBoard);
+
+        // 보드는 펼치는 순간의 카메라 앞에 한 번만 놓인다. AI 분자 탐색에서 모드 선택으로
+        // 빠져나온 직후라면 아직 연구실로 후퇴하는 중일 수 있고, 그때 놓으면 도착과 함께
+        // 보드가 화면 밖에 남는다.
+        if (cameraDirector != null) yield return new WaitUntil(() => !cameraDirector.IsTransitioning);
 
         // 퀘스트 보드 펼치기
         if (board != null)

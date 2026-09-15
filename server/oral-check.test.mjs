@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-const source = readFileSync(new URL("./src/index.js", import.meta.url), "utf8");
-const { default: worker } = await import("data:text/javascript;base64," + Buffer.from(source).toString("base64"));
+import worker from "./src/index.js";
 const env = { APP_TOKEN: "test-token", UPSTAGE_API_KEY: "fake-key" };
 const payload = { questId: "abl1_t315i", criteria: "gatekeeper, steric", conceptKeys: ["gatekeeper", "steric"],
   answer: "문지기가 커져서 가는 약이 비켜 갔어요." };

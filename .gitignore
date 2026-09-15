@@ -104,3 +104,7 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Molecular coordinate assets (not debug symbols)
+!/Assets/StreamingAssets/exploration/*.pdb
+!/Assets/StreamingAssets/exploration/*.pdb.meta
