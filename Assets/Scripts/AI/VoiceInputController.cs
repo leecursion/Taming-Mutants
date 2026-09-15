@@ -56,6 +56,7 @@ public class VoiceInputController : MonoBehaviour
 
     /// <summary>지금 녹음 중인지.</summary>
     public bool IsRecording => speechToText != null && speechToText.IsListening;
+    public bool IsTranscribing => speechToText != null && speechToText.IsTranscribing;
 
     private int _recordingGeneration;
     private bool _recordingOralAnswer;
@@ -284,6 +285,11 @@ public class VoiceInputController : MonoBehaviour
         _recordingOralAnswer = assistant != null && assistant.IsAwaitingOralAnswer;
         _recordingOralRun = assistant != null ? assistant.OralRunId : 0;
         speechToText.StartListening();
+    }
+    public bool ToggleExplorationRecording()
+    {
+        if(speechToText==null || !speechToText.IsConfigured || (!IsRecording && IsBlocked())) return false;
+        HandleClick(); return true;
     }
 
     private void HandleTranscribed(string text)

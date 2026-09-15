@@ -17,6 +17,10 @@ public class MoleculeExplorationController : MonoBehaviour
     [Tooltip("Optional /api/molecule-resolve proxy. If empty, derive from existing CoScientist proxy.")]
     public string resolverEndpoint;
     public string proxyToken;
+    [Tooltip("Optional /api/docking URL. Empty uses the existing proxy server; local development can use http://127.0.0.1:8000/api/docking.")]
+    public string dockingEndpoint;
+    public string dockingToken;
+    ExplorationDockingController _docking;
     [Tooltip("마우스를 1px 끌 때 구조가 도는 각도.")]
     public float dragDegreesPerPixel = .3f;
     IntroDirector _intro;
@@ -25,6 +29,8 @@ public class MoleculeExplorationController : MonoBehaviour
     // 구조 앞을 가리므로, 화면 좌표에 붙는 오버레이 캔버스로 따로 뺀다.
     // 오른쪽 아래 = 나가기(모드 선택), 왼쪽 아래 = 지금 보는 방식(리본/원자 상세).
     GameObject _modeOverlay, _viewOverlay;
+    GameObject _choicesOverlay;
+    string _choiceKind="protein";
     bool _dragging;
     ExplorationMoleculeRenderer _renderer;
     InputField _input;
@@ -39,9 +45,11 @@ public class MoleculeExplorationController : MonoBehaviour
     GameObject _hiddenAssistant;
     bool _assistantWasActive;
     string _lastSubmittedQuery, _lastStatus;
+    string _pendingQuery;
     float _lastSubmittedAt=-10f, _lastStatusAt=-10f;
     RectTransform _panel;
     readonly Dictionary<string,List<ExplorationAtom>> _cache = new Dictionary<string,List<ExplorationAtom>>();
+    readonly Dictionary<string,string> _pdbCache = new Dictionary<string,string>();
     // 화면에 상태줄을 두지 않으므로 안내는 전부 비서의 말로 나간다.
     const string Ready = "보고 싶은 분자를 저에게 말하거나 아래 채팅창에 입력해 주세요.";
     // 화면에는 고를 수 있는 카드 두 장만 남기고, 무엇을 고르는 것인지는 비서가 말로 설명한다.
@@ -61,6 +69,7 @@ public class MoleculeExplorationController : MonoBehaviour
         Cancel(); Active=null; _caseMode=false;
         _conversation.Clear();
         _pendingChoices=Array.Empty<string>();
+        _choiceKind="protein";
         if(_renderer!=null) Destroy(_renderer.gameObject);
         _renderer=null; _current=null; _currentAtoms=null;
         BeginModeTransition();
@@ -94,6 +103,7 @@ public class MoleculeExplorationController : MonoBehaviour
         Cancel(); Active=null; _caseMode=false;
         _conversation.Clear();
         _pendingChoices=Array.Empty<string>();
+        _choiceKind="protein";
         BeginModeTransition();
         _intro.PrepareModeSelection();
         // 사건을 고른 것과 똑같이 배경이 바뀌며 분자 무대로 들어간다 — 카메라 연출도, 그에 딸린
@@ -103,6 +113,7 @@ public class MoleculeExplorationController : MonoBehaviour
     }
     void BeginModeTransition()
     {
+        if(_docking!=null) _docking.CloseSession();
         _changingMode=true;
         ResetUi();
         if(_intro.assistant!=null)
@@ -146,13 +157,15 @@ public class MoleculeExplorationController : MonoBehaviour
 
         CreateModeOverlay();
         CreateViewOverlay();
+        if(_docking==null) _docking=gameObject.AddComponent<ExplorationDockingController>();
+        _docking.Initialize(this);
         // 대표 분자 예시는 버튼으로 늘어놓지 않는다. 무엇을 물어볼 수 있는지는 비서가 말해준다.
         if(_intro.assistant!=null)
         {
             _intro.assistant.SpeakSequence(new[]
             {
                 Ready,
-                "이름을 몰라도 괜찮아요. 관심 있는 기능을 말하거나, 어떤 단백질을 보면 좋을지 추천해 달라고 해보세요.",
+                "이름을 몰라도 괜찮아요. 단백질을 추천해 달라고 말해 주세요. 기존 비서 마이크로 요청하거나 채팅창에 입력할 수 있어요.",
             });
         }
     }
@@ -160,16 +173,25 @@ public class MoleculeExplorationController : MonoBehaviour
     {
         if(Active!=this || string.IsNullOrWhiteSpace(query)) return;
         query=query.Trim(); if(query.Length>300) query=query.Substring(0,300);
-        if(query==_lastSubmittedQuery && Time.unscaledTime-_lastSubmittedAt<.5f) return;
+        if(query==_pendingQuery || (query==_lastSubmittedQuery && Time.unscaledTime-_lastSubmittedAt<.5f)) return;
         _lastSubmittedQuery=query; _lastSubmittedAt=Time.unscaledTime;
         if(_input!=null) _input.text=query;
         Cancel();
-        StartCoroutine(Guarded(ResolveAndLoad(query)));
+        if(_choicesOverlay!=null) _choicesOverlay.SetActive(false);
+        _pendingQuery=query;
+        StartCoroutine(ResolveRequest(query));
+    }
+    IEnumerator ResolveRequest(string query)
+    {
+        try { yield return Guarded(ResolveAndLoad(query)); }
+        finally { if(_pendingQuery==query) _pendingQuery=null; }
     }
     IEnumerator ResolveAndLoad(string query)
     {
         MoleculeViewSpec spec = null;
         string endpoint=resolverEndpoint, token=proxyToken;
+        var local=ReadLocalDockingConfig();
+        if(string.IsNullOrWhiteSpace(endpoint) && local!=null) { endpoint=local.resolverEndpoint; token=local.token; }
         var proxy=_intro.assistant!=null ? _intro.assistant.client as AICoScientistClient : null;
         if(string.IsNullOrWhiteSpace(endpoint) && proxy!=null && proxy.IsConfigured)
         {
@@ -192,13 +214,13 @@ public class MoleculeExplorationController : MonoBehaviour
         }
         else
         {
-            SetStatus("요청의 의미와 현재 구조를 살펴보는 중이에요…");
+            SetStatus("요청을 확인하고 있어요…");
             Resolution result;
             using(var req=new UnityWebRequest(endpoint,"POST"))
             {
                 _request=req; req.timeout=65;
                 req.uploadHandler=new UploadHandlerRaw(Encoding.UTF8.GetBytes(JsonUtility.ToJson(
-                    new Query { query=query, current=BuildContext(), history=BuildHistory(), pendingChoices=_pendingChoices })));
+                    new Query { query=query, current=BuildContext(), history=BuildHistory(), pendingChoices=_pendingChoices,choiceKind=_choiceKind })));
                 req.downloadHandler=new DownloadHandlerBuffer(); req.SetRequestHeader("Content-Type","application/json");
                 if(!string.IsNullOrEmpty(token)) req.SetRequestHeader("X-App-Token",token);
                 yield return req.SendWebRequest(); _request=null;
@@ -219,11 +241,24 @@ public class MoleculeExplorationController : MonoBehaviour
             }
             if(result==null) throw new InvalidOperationException("요청 처리 결과가 비어 있어요.");
             RememberExchange(query,result.message);
-            if(result.action=="clarify") _pendingChoices=result.choices??Array.Empty<string>();
+            if(_docking!=null) _docking.EndSuggestionRequest();
+            if(result.action=="clarify" || result.action=="candidate_choices")
+            { _pendingChoices=result.choices??Array.Empty<string>(); _choiceKind=result.action=="candidate_choices"?"ligand":"protein"; }
             else if(result.action!="explain") _pendingChoices=Array.Empty<string>();
             switch(result.action)
             {
+                case "candidate_choices":
+                    RequireCurrent(); _docking.ShowCandidateChoices(result.choices); SetStatus(result.message??"카드에서 비교할 후보를 골라 주세요."); yield break;
+                case "load_ligand":
+                    RequireCurrent(); _docking.LoadCandidate(result.ligandQuery); yield break;
+                case "dock":
+                    RequireCurrent(); _docking.RunDocking(); yield break;
+                case "docking":
+                    RequireCurrent(); _docking.Open(); SetStatus(result.message??"도킹 실험에서 후보와 부위를 선택해 주세요."); yield break;
+                case "docking_site":
+                    RequireCurrent(); _docking.Open(); _docking.SelectResidues(result.siteSelection); yield break;
                 case "clarify": case "explain":
+                    if(_choiceKind=="protein") ShowStructureChoices(_pendingChoices);
                     SetStatus(result.message??"조금 더 구체적으로 알려주세요."); yield break;
                 case "zoom":
                     RequireCurrent(); Zoom(Mathf.Clamp(result.amount,.5f,2f));
@@ -258,7 +293,6 @@ public class MoleculeExplorationController : MonoBehaviour
         }
         if(!_cache.TryGetValue(spec.pdbId,out var atoms))
         {
-            SetStatus(spec.title+" · 구조 좌표를 불러오는 중…");
             string pdb=null;
             using(var req=UnityWebRequest.Get("https://files.rcsb.org/download/"+spec.pdbId+".pdb"))
             {
@@ -282,8 +316,9 @@ public class MoleculeExplorationController : MonoBehaviour
             }
             if(pdb==null) throw new InvalidOperationException("구조 다운로드에 실패했습니다. 연결을 확인하거나 다른 구조를 선택해 주세요.");
             atoms=ExplorationPdbParser.Parse(pdb);
-            if(_cache.Count>=3) _cache.Clear();
+            if(_cache.Count>=3) { _cache.Clear(); _pdbCache.Clear(); }
             _cache[spec.pdbId]=atoms;
+            _pdbCache[spec.pdbId]=pdb;
         }
         yield return Render(atoms,spec,ValidateView(spec.view));
     }
@@ -306,7 +341,8 @@ public class MoleculeExplorationController : MonoBehaviour
             availableChains=string.Join(",",_currentAtoms.Where(a=>!a.hetero).Select(a=>a.chain).Distinct().Take(80)),
             residueRanges=string.Join("; ",_currentAtoms.Where(a=>!a.hetero).GroupBy(a=>a.chain).Take(80)
                 .Select(g=>g.Key+":"+g.Min(a=>a.number)+".."+g.Max(a=>a.number))),
-            ligands=string.Join(",",_currentAtoms.Where(a=>a.hetero).Select(a=>a.residue).Distinct().Take(80))
+            ligands=string.Join(",",_currentAtoms.Where(a=>a.hetero).Select(a=>a.residue).Distinct().Take(80)),
+            docking=_docking!=null?_docking.DiscussionContext():""
         };
     }
 
@@ -322,11 +358,15 @@ public class MoleculeExplorationController : MonoBehaviour
             _conversation.Add(new ConversationTurn { role="assistant", content=answer });
         if(_conversation.Count>8) _conversation.RemoveRange(0,_conversation.Count-8);
     }
-    IEnumerator Render(List<ExplorationAtom> atoms,MoleculeViewSpec spec,string view)
+    IEnumerator Render(List<ExplorationAtom> atoms,MoleculeViewSpec spec,string view,bool announce=true)
     {
-        SetStatus(spec.title+" · 3D를 만드는 중…");
         _pendingRoot=new GameObject("AI molecular structure"); _pendingRoot.SetActive(false);
         var candidate=_pendingRoot.AddComponent<ExplorationMoleculeRenderer>();
+        if(_docking!=null && _docking.Session.PdbId==spec.pdbId && _docking.DisplaySite!=null)
+        {
+            var center=_docking.DisplaySite.center; candidate.PreferredFocus=new Vector3(center[0],center[1],center[2]);
+            candidate.HideBoundLigands=_docking.Session.Candidate!=null;
+        }
         yield return candidate.Build(atoms,spec,view);
         // 구조는 카메라 앞 고정 거리에 한 번만 놓는다. 진입 연출이 아직 날아가는 중이면
         // 그 중간 지점에 세워져, 도착했을 땐 화면 밖에 남는다.
@@ -341,9 +381,10 @@ public class MoleculeExplorationController : MonoBehaviour
         if(_renderer!=null) { _renderer.gameObject.SetActive(false); Destroy(_renderer.gameObject); }
         _renderer=candidate; _pendingRoot.SetActive(true); _pendingRoot=null;
         _current=spec; _currentAtoms=atoms; _currentView=view;
+        if(_docking!=null) { _pdbCache.TryGetValue(spec.pdbId,out string rawPdb); _docking.BindTarget(spec,atoms,rawPdb,candidate); }
         if(_viewOverlay!=null) _viewOverlay.SetActive(true);
         yield return null;
-        SetStatus(spec.title+"을 표시했어요. "+spec.description+" "+candidate.DisplayScope+"를 보고 있어요. "+
+        if(announce) SetStatus(spec.title+"을 표시했어요. "+spec.description+" "+candidate.DisplayScope+"를 보고 있어요. "+
             "마우스로 끌면 돌려볼 수 있고, 휠을 굴리면 확대돼요.");
     }
     void ChangeView(string view)
@@ -363,6 +404,7 @@ public class MoleculeExplorationController : MonoBehaviour
                 catch(Exception ex) { error=ex; }
                 if(error!=null)
                 {
+                    if(_docking!=null) _docking.EndSuggestionRequest();
                     _request=null;
                     if(_pendingRoot!=null) Destroy(_pendingRoot); _pendingRoot=null;
                     // 서버의 선택 설명보다 실제 표시 실패가 최신 대화 맥락이어야 한다.
@@ -380,6 +422,7 @@ public class MoleculeExplorationController : MonoBehaviour
     {
         if(_request!=null) { _request.Abort(); _request.Dispose(); _request=null; }
         StopAllCoroutines();
+        _pendingQuery=null;
         if(_pendingRoot!=null) Destroy(_pendingRoot); _pendingRoot=null;
     }
     /// <summary>
@@ -453,6 +496,11 @@ public class MoleculeExplorationController : MonoBehaviour
             ? Mathf.Min(height*cam.aspect*.56f/_panel.sizeDelta.x,height*.16f/_panel.sizeDelta.y)
             : Mathf.Min(height*cam.aspect*.52f/_panel.sizeDelta.x,height*.34f/_panel.sizeDelta.y);
         _ui.transform.localScale=Vector3.one*scale;
+        if(Active==this && _docking!=null)
+        {
+            float halfHeight=_panel.sizeDelta.y*scale/height*.5f;
+            _ui.transform.position=cam.ViewportToWorldPoint(new Vector3(.5f,_docking.SearchViewportY(halfHeight),1.6f));
+        }
     }
     /// <summary>앞 화면이 남긴 판넬·오버레이를 치운다. 화면을 새로 짓기 전에 항상 먼저 부른다.</summary>
     void ResetUi()
@@ -487,7 +535,7 @@ public class MoleculeExplorationController : MonoBehaviour
     /// 글로우 → 패널 → 외곽선 3겹에 ColorTint 하이라이트. 모드 선택과 사례 선택이
     /// 연달아 나오는 화면이라 둘의 생김새가 다르면 같은 고르기인 줄 알아보기 어렵다.
     /// </summary>
-    void CardButton(string caption,Vector2 position,Vector2 size,UnityEngine.Events.UnityAction action,Color accent,
+    Button CardButton(string caption,Vector2 position,Vector2 size,UnityEngine.Events.UnityAction action,Color accent,
                     int fontSize=34)
     {
         // 이름은 캡션 그대로 — 스모크 테스트가 버튼을 이름으로 찾는다.
@@ -510,6 +558,7 @@ public class MoleculeExplorationController : MonoBehaviour
         colors.fadeDuration=.12f;
         button.colors=colors;
         button.onClick.AddListener(action);
+        return button;
     }
     static Image CardLayer(Transform parent,string name,Sprite sprite,Color color,float expand,bool raycastTarget=false)
     {
@@ -587,31 +636,123 @@ public class MoleculeExplorationController : MonoBehaviour
     }
     void DestroyOverlays()
     {
+        if(_choicesOverlay!=null) { _choicesOverlay.SetActive(false); Destroy(_choicesOverlay); } _choicesOverlay=null;
         if(_modeOverlay!=null) { _modeOverlay.SetActive(false); Destroy(_modeOverlay); } _modeOverlay=null;
         if(_viewOverlay!=null) { _viewOverlay.SetActive(false); Destroy(_viewOverlay); } _viewOverlay=null;
     }
     static void Place(RectTransform rect,Vector2 position,Vector2 size) { rect.anchoredPosition=position; rect.sizeDelta=size; }
     void OnDestroy()
     {
+        if(_docking!=null) _docking.CloseSession();
         if(_hiddenAssistant!=null) _hiddenAssistant.SetActive(_assistantWasActive);
         Cancel(); if(Active==this) Active=null;
         DestroyOverlays();
         if(_ui!=null) Destroy(_ui); if(_renderer!=null) Destroy(_renderer.gameObject);
     }
-    [Serializable] class Query { public string query; public CurrentContext current; public ConversationTurn[] history; public string[] pendingChoices; }
+    [Serializable] class Query { public string query,choiceKind; public CurrentContext current; public ConversationTurn[] history; public string[] pendingChoices; }
     [Serializable] class ConversationTurn { public string role,content; }
     [Serializable] class CurrentContext
     {
-        public string pdbId,title,chains,view,description,displayScope,availableChains,residueRanges,ligands;
+        public string pdbId,title,chains,view,description,displayScope,availableChains,residueRanges,ligands,docking;
     }
     [Serializable] class Resolution
     {
         public MoleculeViewSpec spec;
-        public string action,message,error,view,chains,ligand,secondaryStructure;
+        public string action,message,error,view,chains,ligand,secondaryStructure,ligandQuery,siteSelection;
         public string[] choices;
         public float amount;
         public int residueStart,residueEnd;
         public bool resetSelection;
+    }
+    public void ReportDockingStatus(string message)
+    {
+        SetStatus(message);
+        _conversation.Add(new ConversationTurn { role="assistant",content="도킹 상태: "+message });
+        if(_conversation.Count>8) _conversation.RemoveRange(0,_conversation.Count-8);
+    }
+    public void FocusDockingSite()
+    {
+        if(_currentAtoms==null) return;
+        var spec=JsonUtility.FromJson<MoleculeViewSpec>(JsonUtility.ToJson(_current));
+        spec.residueStart=spec.residueEnd=0; spec.ligand=""; spec.secondaryStructure="";
+        string view=_currentView=="ligand"?"atoms":_currentView;
+        Cancel(); StartCoroutine(Guarded(Render(_currentAtoms,spec,view,false)));
+    }
+    Coroutine _dockFocusRoutine;
+    public bool IsDockingOpen => _docking!=null && _docking.IsOpen;
+    public void FocusDockingCamera()
+    {
+        if(_renderer!=null && _docking!=null && _docking.IsOpen && _docking.DisplaySite!=null)
+        {
+            if(_dockFocusRoutine!=null) StopCoroutine(_dockFocusRoutine);
+            _dockFocusRoutine=StartCoroutine(FrameDockingRegion(_renderer,_docking.DisplaySite));
+        }
+    }
+    IEnumerator FrameDockingRegion(ExplorationMoleculeRenderer protein,DockingSite site)
+    {
+        var cam=_intro!=null&&_intro.targetCamera!=null?_intro.targetCamera:Camera.main;
+        if(cam==null) yield break;
+        Vector3 point=protein.PdbToLocal(new Vector3(site.center[0],site.center[1],site.center[2]));
+        Vector3 from=protein.transform.position,scale=protein.transform.localScale;
+        float height=cam.orthographic?2*cam.orthographicSize:4*Mathf.Tan(cam.fieldOfView*Mathf.Deg2Rad*.5f);
+        float targetScale=Mathf.Clamp(height*Mathf.Min(.30f,cam.aspect*.32f)/(site.size.Max()*.1f),.01f,3f);
+        for(float elapsed=0;elapsed<.45f;elapsed+=Time.unscaledDeltaTime)
+        {
+            if(protein==null || protein!=_renderer) yield break;
+            float p=Mathf.SmoothStep(0,1,elapsed/.45f);
+            protein.transform.localScale=Vector3.Lerp(scale,Vector3.one*targetScale,p);
+            Vector3 target=cam.ViewportToWorldPoint(new Vector3(.55f,.46f,2f))-protein.transform.TransformVector(point);
+            protein.transform.position=Vector3.Lerp(from,target,p); yield return null;
+        }
+        if(protein!=null && protein==_renderer)
+        {
+            protein.transform.localScale=Vector3.one*targetScale;
+            protein.transform.position=cam.ViewportToWorldPoint(new Vector3(.55f,.46f,2f))-protein.transform.TransformVector(point);
+        }
+        _dockFocusRoutine=null;
+    }
+    void ShowStructureChoices(string[] choices)
+    {
+        if(_choicesOverlay!=null) { _choicesOverlay.SetActive(false); Destroy(_choicesOverlay); } _choicesOverlay=null;
+        if(choices==null || choices.Length==0) return;
+        if(_docking!=null) _docking.HidePanel();
+        _choicesOverlay=CreateOverlay("Protein choice cards");
+        for(int i=0;i<choices.Length;i++)
+        {
+            int index=i;
+            OverlayButton(_choicesOverlay.transform,choices[i],new Vector2(0,1),new Vector2(28,-100-i*90),new Vector2(490,76),()=>Submit((index+1)+"번 것으로 보여줘"));
+        }
+    }
+    public void GetDockingConnection(out string endpoint,out string token)
+    {
+        endpoint=dockingEndpoint; token=dockingToken;
+        if(!string.IsNullOrWhiteSpace(endpoint)) return;
+        var local=ReadLocalDockingConfig();
+        if(local!=null) { endpoint=local.dockingEndpoint; token=local.token; return; }
+        if(!string.IsNullOrWhiteSpace(resolverEndpoint))
+        {
+            endpoint=new Uri(new Uri(resolverEndpoint),"/api/docking").ToString(); token=proxyToken; return;
+        }
+        var proxy=_intro!=null && _intro.assistant!=null?_intro.assistant.client as AICoScientistClient:null;
+        if(proxy!=null && proxy.IsConfigured) { endpoint=new Uri(new Uri(proxy.backendEndpoint),"/api/docking").ToString(); token=proxy.proxyToken; }
+    }
+    [Serializable] class LocalDockingConfig { public string resolverEndpoint,dockingEndpoint,token; }
+    static LocalDockingConfig ReadLocalDockingConfig()
+    {
+#if UNITY_EDITOR
+        try
+        {
+            string path=Path.GetFullPath(Path.Combine(Application.dataPath,"../Temp/DockingChecks/editor-service.json"));
+            if(File.Exists(path))
+            {
+                var config=JsonUtility.FromJson<LocalDockingConfig>(File.ReadAllText(path));
+                if((string.IsNullOrEmpty(config.resolverEndpoint) || (Uri.TryCreate(config.resolverEndpoint,UriKind.Absolute,out var resolver) && resolver.IsLoopback)) &&
+                   Uri.TryCreate(config.dockingEndpoint,UriKind.Absolute,out var docking) && docking.IsLoopback) return config;
+            }
+        }
+        catch(Exception) { }
+#endif
+        return null;
     }
 }
 

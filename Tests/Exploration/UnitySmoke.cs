@@ -35,7 +35,7 @@ public static class ExplorationSmoke
     static void Tick()
     {
         try {
-            if(EditorApplication.timeSinceStartup-started>90) throw new Exception("Test timeout");
+            if(EditorApplication.timeSinceStartup-started>(Environment.GetEnvironmentVariable("DOCKING_LIVE_UNITY")=="1"?300:90)) throw new Exception("Test timeout");
             if(stack.Count==0) { File.WriteAllText("smoke-result.txt","PASS"); EditorApplication.update-=Tick; EditorApplication.Exit(0); return; }
             bool moved=stack.Peek().MoveNext();
             if(!moved) { (stack.Pop() as IDisposable)?.Dispose(); return; }
@@ -179,6 +179,7 @@ public static class ExplorationSmoke
         Check(rejected,"Oversized file accepted");
         var introObject=new GameObject("Intro");
         var intro=introObject.AddComponent<IntroDirector>(); intro.targetCamera=camera;
+        intro.assistant=new GameObject("Test assistant").AddComponent<AIAssistantBrain>();
         intro.board=introObject.AddComponent<QuestSelectionBoard>();
         var controller=introObject.AddComponent<MoleculeExplorationController>(); controller.Initialize(intro);
         controller.ShowModeSelection(); yield return null; yield return null;
@@ -204,6 +205,8 @@ public static class ExplorationSmoke
         // 모드 선택으로 나올 때마다 연구실 시점으로 되돌아온다.
         int returnsBefore=intro.returnedToLab;
         controller.StartExploration();
+        Check(GameObject.Find("단백질 추천")==null && GameObject.Find("말로 요청")==null,"Removed toolbar buttons still present");
+        Check(intro.assistant.spoken.Any(s=>s.Contains("단백질을 추천")),"Initial guidance omitted protein recommendations");
         Check(intro.enteredStage==1,"Exploration mode did not play the case-style stage transition");
         StateTesterSmoke.Run(true);
         report.Add("Space/number test shortcuts: opt-in only, blocked while typing and during AI exploration PASS");
@@ -249,13 +252,18 @@ public static class ExplorationSmoke
                 var incoming=await listener.GetContextAsync();
                 string payload;
                 using(var reader=new StreamReader(incoming.Request.InputStream)) payload=await reader.ReadToEndAsync();
+                await Task.Delay(900);
                 byte[] bytes=Encoding.UTF8.GetBytes("{\"action\":\"view\",\"view\":\"atoms\"}");
                 incoming.Response.ContentType="application/json"; incoming.Response.ContentLength64=bytes.Length;
                 await incoming.Response.OutputStream.WriteAsync(bytes,0,bytes.Length); incoming.Response.Close();
                 return payload;
             });
             controller.resolverEndpoint="http://localhost:"+port+"/api/molecule-resolve";
+            intro.assistant.spoken.Clear();
             controller.Submit("사람의 헤모글로빈 보여줘");
+            yield return new WaitForSecondsRealtime(.6f);
+            controller.Submit("사람의 헤모글로빈 보여줘");
+            Check(intro.assistant.spoken.Count(s=>s=="요청을 확인하고 있어요…")==1,"In-flight duplicate repeated the loading announcement");
             double responseDeadline=EditorApplication.timeSinceStartup+12;
             ExplorationMoleculeRenderer changed=null;
             while(EditorApplication.timeSinceStartup<responseDeadline)
@@ -272,6 +280,18 @@ public static class ExplorationSmoke
             listener.Stop();
         }
         report.Add("Configured LLM route gets known name + current context; model view command produces atom geometry PASS");
+        yield return null; yield return null;
+        intro.assistant.spoken.Clear();
+        var rendererField=typeof(MoleculeExplorationController).GetField("_renderer",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic);
+        var beforeFocus=rendererField.GetValue(controller);
+        controller.FocusDockingSite();
+        double focusDeadline=EditorApplication.timeSinceStartup+10;
+        while(ReferenceEquals(rendererField.GetValue(controller),beforeFocus) && EditorApplication.timeSinceStartup<focusDeadline) yield return null;
+        Check(!ReferenceEquals(rendererField.GetValue(controller),beforeFocus),"Docking focus did not finish rebuilding");
+        Check((string)typeof(MoleculeExplorationController).GetField("_currentView",System.Reflection.BindingFlags.Instance|System.Reflection.BindingFlags.NonPublic).GetValue(controller)=="atoms","Docking focus changed atom view to ribbon");
+        yield return null; yield return null;
+        Check(intro.assistant.spoken.Count==0,"Internal docking focus repeated loading/display speech");
+        report.Add("Initial recommendation guidance, removed toolbar, in-flight request deduplication and silent docking focus PASS");
         // A clarification must survive the round trip so a short next answer is meaningful to the model.
         string clarification="혈당과 관련된 인슐린, 글루카곤 중 무엇을 볼까요?";
         var beforeChoice=UnityEngine.Object.FindObjectsByType<ExplorationMoleculeRenderer>(FindObjectsSortMode.None)
@@ -326,6 +346,7 @@ public static class ExplorationSmoke
         report.Add("UI choices, case dispatch, text to live geometry, exit cleanup PASS (isolated scene dependencies)");
         report.Add("Exploration entry plays the case-style background transition and the exit restores the lab PASS");
         File.WriteAllLines("smoke-details.txt",report);
+        yield return DockingSmoke.Run(camera,controller);
     }
 
     static Task<string> listenerRoundTrip(string endpoint,string responseJson)

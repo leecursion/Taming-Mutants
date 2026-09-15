@@ -1,0 +1,7 @@
+rdkit==2025.9.6
+meeko==0.7.1
+gemmi==0.7.5
+scipy==1.17.1
+fastapi==0.135.1
+uvicorn==0.42.0
+httpx==0.28.1

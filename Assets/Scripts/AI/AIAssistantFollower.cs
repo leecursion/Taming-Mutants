@@ -198,13 +198,15 @@ public class AIAssistantFollower : MonoBehaviour
         if (!_hasAuthoredScale) { _authoredScale = transform.localScale; _hasAuthoredScale = true; }
         // Measure from the authored scale each time; never compound last frame's shrink.
         transform.localScale = _authoredScale;
+        bool docking=MoleculeExplorationController.Active!=null && MoleculeExplorationController.Active.IsDockingOpen;
+        // SpeechBubble compensates parent scale; it limits its own docking width separately.
         MeasureAssemblyExtents(cam, out float left, out float right, out float bottom, out float top, includeUI: false);
         float depth = Mathf.Max(cam.nearClipPlane * 2f,
             Vector3.Dot(transform.position - cam.transform.position, cam.transform.forward));
         float height = cam.orthographic ? cam.orthographicSize * 2f :
             2f * depth * Mathf.Tan(cam.fieldOfView * Mathf.Deg2Rad * 0.5f);
-        float fit = Mathf.Min(1f, height * maxScreenHeight / Mathf.Max(top - bottom, 0.001f),
-            height * cam.aspect * maxScreenWidth / Mathf.Max(right - left, 0.001f));
+        float fit = Mathf.Min(1f, height * (docking?.28f:maxScreenHeight) / Mathf.Max(top - bottom, 0.001f),
+            height * cam.aspect * (docking?.20f:maxScreenWidth) / Mathf.Max(right - left, 0.001f));
         transform.localScale = _authoredScale * fit;
     }
 
@@ -307,7 +309,8 @@ public class AIAssistantFollower : MonoBehaviour
         // 하한은 "어셈블리 왼쪽 끝이 minViewportX"가 되는 루트 위치, 상한은 오른쪽 끝이
         // 화면 안에 남는 자리. 어셈블리가 그 사이에 안 들어가면(말풍선이 아주 길 때)
         // 가운데로 물러나지 않고 상한 — 즉 가능한 한 오른쪽 — 을 택한다.
-        float minVx = Mathf.Max(padX, minViewportX) - vLeft;
+        bool docking=MoleculeExplorationController.Active!=null && MoleculeExplorationController.Active.IsDockingOpen;
+        float minVx = Mathf.Max(padX, docking?.77f:minViewportX) - vLeft;
         float maxVx = 1f - padX - vRight;
         float vx = Mathf.Min(Mathf.Max(projectable ? viewport.x : minVx, minVx), maxVx);
 
@@ -574,7 +577,7 @@ public class AIAssistantFollower : MonoBehaviour
         foreach (Renderer r in _selfRenderers)
         {
             // 파티클(주변 입자)은 경계가 프레임마다 출렁여서 넣으면 정위치가 떨린다.
-            if (r == null || !r.enabled || r is ParticleSystemRenderer) continue;
+            if (r == null || !r.enabled || !r.gameObject.activeInHierarchy || r is ParticleSystemRenderer) continue;
 
             Bounds b = r.bounds;
             for (int i = 0; i < 8; i++)
@@ -589,7 +592,7 @@ public class AIAssistantFollower : MonoBehaviour
         foreach (RectTransform rect in _selfRects)
         {
             // Empty Canvas/layout rectangles are not visible geometry.
-            if (rect == null || rect.GetComponent<UnityEngine.UI.Graphic>() == null) continue;
+            if (rect == null || !rect.gameObject.activeInHierarchy || rect.GetComponent<UnityEngine.UI.Graphic>() == null) continue;
 
             rect.GetWorldCorners(_rectCorners);
             for (int i = 0; i < 4; i++)
