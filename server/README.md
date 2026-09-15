@@ -174,7 +174,7 @@ npx wrangler secret put UPSTAGE_API_KEY    # 값 교체 — 재배포 없이 즉
 
 ```powershell
 npx wrangler dev                          # Worker만 로컬(8787), .dev.vars의 키 사용
-.\Tests\Docking\Start-LocalDocking.ps1    # 도킹 서비스 + 로컬 프록시 (Editor 전용)
+..\Tests\Docking\Start-LocalDocking.ps1   # 도킹 서비스 + 로컬 프록시 (Editor 전용)
 ```
 
 로컬에는 `DOCKING` 바인딩이 없어서 `DOCKING_SERVICE_URL` 경로로 자동 전환된다.
