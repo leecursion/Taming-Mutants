@@ -347,6 +347,11 @@ public partial class AIAssistantBrain : MonoBehaviour
     /// </summary>
     public void AskAssistant(string question, string selection = null)
     {
+        if (MoleculeExplorationController.Active != null)
+        {
+            MoleculeExplorationController.Active.Submit(question);
+            return;
+        }
         if (string.IsNullOrWhiteSpace(question)) return;
 
         if (!CanUseLlm)

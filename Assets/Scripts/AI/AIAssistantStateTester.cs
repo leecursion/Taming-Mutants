@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Controls;
+using UnityEngine.EventSystems;
+using UnityEngine.UI;
 
 /// <summary>
 /// AI 연동 전에 표정/색/회전 연출을 눈으로 확인하기 위한 임시 컴포넌트.
@@ -10,6 +12,8 @@ public class AIAssistantStateTester : MonoBehaviour
 {
     public AIAssistantVisual visual;
     public AIAssistantSpeechBubble bubble;
+    [Tooltip("개발용 Space/숫자 단축키를 명시적으로 켠다. 일반 플레이에서는 꺼둔다.")]
+    public bool enableTestShortcuts = false;
     [Tooltip("현재 상태를 화면 좌상단에 표시")]
     public bool showOnScreenLabel = true;
 
@@ -45,10 +49,12 @@ public class AIAssistantStateTester : MonoBehaviour
 
     private void Update()
     {
+        if (!CanUseTestShortcuts()) return;
+
         Keyboard keyboard = Keyboard.current;
         if (keyboard == null) return;
 
-        if (bubble != null && keyboard.spaceKey.wasPressedThisFrame && sampleMessages.Length > 0)
+        if (bubble != null && keyboard.spaceKey.wasPressedThisFrame && sampleMessages != null && sampleMessages.Length > 0)
         {
             bubble.Say(sampleMessages[_sampleIndex % sampleMessages.Length]);
             _sampleIndex++;
@@ -71,9 +77,16 @@ public class AIAssistantStateTester : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!showOnScreenLabel || visual == null) return;
+        if (!CanUseTestShortcuts() || !showOnScreenLabel || visual == null) return;
 
         GUI.Label(new Rect(10, 10, 600, 20),
             $"AI 비서 상태: {visual.CurrentState}  (1=Idle 2=Listening 3=Thinking 4=Speaking 5=Alert / Space=말풍선)");
+    }
+
+    private bool CanUseTestShortcuts()
+    {
+        if (!enableTestShortcuts || MoleculeExplorationController.Active != null) return false;
+        var selected = EventSystem.current != null ? EventSystem.current.currentSelectedGameObject : null;
+        return selected == null || selected.GetComponentInParent<InputField>() == null;
     }
 }

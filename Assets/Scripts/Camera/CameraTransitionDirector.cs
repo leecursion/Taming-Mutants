@@ -187,6 +187,19 @@ public class CameraTransitionDirector : MonoBehaviour
     /// <summary>연출과 함께 지정한 레벨로 이동한다. 이미 그 레벨이면 아무 일도 하지 않는다.</summary>
     public void GoTo(QuestLevel level)
     {
+        GoTo(level, true);
+    }
+
+    /// <summary>카메라 연출만 재사용하고 사건 무대와 진입 이벤트는 켜지 않는다.</summary>
+    public void GoToCameraOnly(QuestLevel level)
+    {
+        foreach (var pair in _stages)
+            if (pair.Key != QuestLevel.Level0_Body) pair.Value.SetActive(false, invokeEvents: false);
+        GoTo(level, false);
+    }
+
+    private void GoTo(QuestLevel level, bool activateTarget)
+    {
         if (level == CurrentLevel && !IsTransitioning)
         {
             if (level == QuestLevel.Level0_Body && _hasLabEntryPose)
@@ -195,10 +208,10 @@ public class CameraTransitionDirector : MonoBehaviour
         }
 
         StopRunning();
-        _running = StartCoroutine(TransitionRoutine(CurrentLevel, level));
+        _running = StartCoroutine(TransitionRoutine(CurrentLevel, level, activateTarget));
     }
 
-    private IEnumerator TransitionRoutine(QuestLevel from, QuestLevel to)
+    private IEnumerator TransitionRoutine(QuestLevel from, QuestLevel to, bool activateTarget)
     {
         LevelStage target = Find(to);
         if (target == null)
@@ -217,7 +230,7 @@ public class CameraTransitionDirector : MonoBehaviour
         if (settings.style == CameraMotionStyle.Cut || settings.duration <= 0f)
         {
             if (!SharesContent(previous, target)) previous?.SetActive(false);
-            target.SetActive(true);
+            if (activateTarget) target.SetActive(true);
             ApplyPose(target, StagePosition(target), StageRotation(target));
             FinishTransition(to);
             yield break;
@@ -259,7 +272,7 @@ public class CameraTransitionDirector : MonoBehaviour
             if (!revealed && raw >= settings.revealAt)
             {
                 revealed = true;
-                target.SetActive(true);
+                if (activateTarget) target.SetActive(true);
             }
 
             if (!hidden && raw >= settings.hidePreviousAt)
@@ -273,7 +286,7 @@ public class CameraTransitionDirector : MonoBehaviour
             yield return null;
         }
 
-        if (!revealed) target.SetActive(true);
+        if (!revealed && activateTarget) target.SetActive(true);
         if (!hidden && previous != null && previous != target && !SharesContent(previous, target))
             previous.SetActive(false);
 

@@ -304,6 +304,14 @@ public class VoiceInputController : MonoBehaviour
         }
         if (assistant.IsOralCheckActive) return;
 
+        // 분자 탐색은 컨트롤러가 곧바로 "해석 중"과 실제 답변을 말한다. 여기서 인식 문장까지
+        // 되읽으면 한 요청에 안내가 연달아 교체되어 같은 말을 두 번 하는 것처럼 들린다.
+        if (MoleculeExplorationController.Active != null)
+        {
+            MoleculeExplorationController.Active.Submit(text);
+            return;
+        }
+
         // 알아들은 말을 먼저 되읊어 준다. 잘못 들었을 때 사용자가 바로 알아채고 다시 물을 수 있다.
         assistant.SpeakNow($"\"{text}\" 라고 물어보셨네요. 잠깐만요!");
         assistant.AskAssistant(text);

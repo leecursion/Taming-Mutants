@@ -137,6 +137,10 @@ public class AIAssistantSpeechBubble : MonoBehaviour
 
     private readonly Queue<SpeechCue> _pending = new Queue<SpeechCue>();
     private Coroutine _runner;
+    // 접히는 중인 말풍선. 재생기(_runner)와 별개로 도는 코루틴이라 따로 들고 있어야 멈출 수 있다 —
+    // 접히자마자 새 대사가 들어오면(화면을 바꾸며 ResetConversation 직후 말을 거는 경우) 접기가
+    // 끝나는 순간 말풍선 오브젝트를 꺼버려, 막 띄운 대사가 통째로 사라진다.
+    private Coroutine _hideRoutine;
     // 재생 중인 대사. 일시정지로 끊기면 이걸 들고 있다가 다시 튼다.
     private SpeechCue _current;
     private bool _hasCurrent;
@@ -823,7 +827,7 @@ public class AIAssistantSpeechBubble : MonoBehaviour
         _hasCurrent = false;
         if (_runner != null) StopCoroutine(_runner);
         _runner = null;
-        StartCoroutine(HideRoutine());
+        StartHideRoutine();
     }
 
     /// <summary>
@@ -840,7 +844,22 @@ public class AIAssistantSpeechBubble : MonoBehaviour
 
         _paused = true;
         StopVoice();
-        StartCoroutine(HideRoutine());
+        StartHideRoutine();
+    }
+
+    private void StartHideRoutine()
+    {
+        if (_hideRoutine != null) StopCoroutine(_hideRoutine);
+        _hideRoutine = null;
+
+        // 부모가 꺼진 경우에도 코루틴을 시작할 수 없으므로 숨김 상태를 즉시 적용한다.
+        if (!gameObject.activeInHierarchy)
+        {
+            CompleteHide();
+            return;
+        }
+
+        _hideRoutine = StartCoroutine(HideRoutine());
     }
 
     /// <summary>멈춰 둔 재생을 다시 시작한다.</summary>
@@ -905,6 +924,10 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     {
         string message = cue.Message;
         if (bubbleRect == null || label == null) yield break;
+
+        // 접는 중이었다면 여기서 끊는다. 그대로 두면 접기가 끝나는 순간 말풍선이 꺼져
+        // 지금 띄우는 대사가 화면에서 사라진다.
+        if (_hideRoutine != null) { StopCoroutine(_hideRoutine); _hideRoutine = null; }
 
         bubbleRect.gameObject.SetActive(true);
 
@@ -1066,6 +1089,12 @@ public class AIAssistantSpeechBubble : MonoBehaviour
     {
         yield return Reveal(false);
 
+        CompleteHide();
+    }
+
+    private void CompleteHide()
+    {
+        ApplyReveal(0f, collapseToScale);
         if (bubbleRect != null) bubbleRect.gameObject.SetActive(false);
 
         // 도중에 Alert 같은 다른 상태로 바뀌었다면 덮어쓰지 않는다.

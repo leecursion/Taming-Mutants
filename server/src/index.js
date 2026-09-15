@@ -1,3 +1,4 @@
+import { handleMoleculeResolve } from './molecule-resolve.js';
 /**
  * 돌연변이 길들이기 — LLM 프록시 (Cloudflare Workers)
  *
@@ -118,6 +119,7 @@ export default {
 
     try {
       switch (url.pathname) {
+        case "/api/molecule-resolve": return await handleMoleculeResolve(request, env);
         case "/api/co-scientist": return await handleChat(request, env);
         case "/api/oral-check":   return await handleOralCheck(request, env);
         case "/api/stt":          return await handleStt(request, env);
