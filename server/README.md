@@ -41,6 +41,11 @@ npx wrangler deploy
 
 끝나면 `https://taming-mutants-proxy.<계정>.workers.dev` 형태의 URL이 출력된다.
 
+도킹 계산 서비스(`docking/`)는 같은 `wrangler deploy`로 Cloudflare Containers에 함께 올라간다.
+Workers Paid 플랜과 실행 중인 로컬 Docker가 필요하다. 자세한 내용은
+`docs/AI-Docking-Experiments.md`의 "서버 배포"를 본다. Worker만 다시 올릴 때는
+`npx wrangler deploy --containers-rollout=none`.
+
 ## Unity 배선
 
 `Lab_Desktop` 씬에서:

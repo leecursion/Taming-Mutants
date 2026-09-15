@@ -73,22 +73,30 @@ Unity Editor는 생성된 `Temp/DockingChecks/editor-service.json`을 읽습니�
 
 ## 서버 배포
 
-`server/docking`의 Python 서비스는 기존 Cloudflare Worker와 별도의 CPU 호스트에서 실행합니다. Linux x86-64용 Dockerfile을 제공합니다.
+`server/docking`의 Python 서비스는 기존 Worker와 함께 **Cloudflare Containers**로 배포합니다. `server/wrangler.toml`의 `[[containers]]`가 `docking/Dockerfile`을 가리키고, Worker는 `DOCKING` Durable Object 바인딩(`src/docking-container.js`)을 통해서만 컨테이너를 호출합니다. 컨테이너에는 공개 주소가 없습니다.
+
+요구 사항:
+
+- Cloudflare **Workers Paid** 플랜 (Containers는 Free 플랜에서 동작하지 않음)
+- 로컬 **Docker** 데몬 실행 중 — `wrangler deploy`가 이미지를 빌드해 Cloudflare 레지스트리에 올립니다
+
+```powershell
+cd server
+npx wrangler deploy
+```
+
+인스턴스는 `max_instances = 1`, `standard-3`(2 vCPU, `chemistry.py`의 `vina --cpu 2`와 맞춤)이며 유휴 15분 후 잠듭니다. 작업 상태는 프로세스 메모리에 있으므로 잠든 뒤에는 이전 작업을 조회할 수 없고, 잠에서 깨는 첫 요청은 컨테이너 기동 시간만큼 느립니다. `DOCKING_SERVICE_TOKEN` secret을 넣으면 컨테이너에도 같은 값이 전달되어 토큰 검사가 켜지지만, Worker→컨테이너 구간은 외부에 열려 있지 않아 필수는 아닙니다. 기존 `APP_TOKEN`, `UPSTAGE_API_KEY`는 그대로 유지합니다.
+
+Worker 코드만 다시 올리고 컨테이너 이미지는 건드리지 않으려면 `npx wrangler deploy --containers-rollout=none`을 씁니다(Docker 불필요).
+
+`DOCKING` 바인딩이 없는 환경(로컬 `wrangler dev`, `Tests/Docking/Start-LocalDocking.ps1`)에서는 `DOCKING_SERVICE_URL`의 별도 프로세스를 호출하는 이전 경로가 그대로 동작합니다. 다른 호스트에 직접 띄울 때도 같은 Dockerfile을 쓸 수 있습니다:
 
 ```sh
 docker build -t taming-mutants-docking server/docking
 docker run --rm -p 8000:8000 -e DOCKING_SERVICE_TOKEN taming-mutants-docking
 ```
 
-외부 서비스에는 HTTPS와 `DOCKING_SERVICE_TOKEN`을 설정합니다. 기존 Worker에는 다음 값을 설정하고 수정된 Worker를 배포합니다.
-
-- `DOCKING_SERVICE_URL`: CPU 서비스의 HTTPS 원점
-- `DOCKING_SERVICE_TOKEN`: CPU 서비스와 동일한 토큰 (Worker secret)
-- 기존 `APP_TOKEN`, `UPSTAGE_API_KEY` 유지
-
-Unity는 기존 `AICoScientistClient.backendEndpoint` 또는 `resolverEndpoint`의 동일 서버 `/api/docking`을 자동 사용합니다. 직접 연결은 `MoleculeExplorationController.dockingEndpoint`와 `dockingToken`을 지정합니다. CPU 서비스 키를 빌드에 넣지 않으려면 기존 Worker 경로를 사용합니다.
-
-이번 구현에서 원격 서비스 배포나 Worker secrets 변경은 수행하지 않았습니다. Docker 환경 검증은 별도이며 실제 계산은 Windows 공식 Vina 실행 파일로 확인했습니다.
+Unity는 기존 `AICoScientistClient.backendEndpoint` 또는 `resolverEndpoint`의 동일 서버 `/api/docking`을 자동 사용합니다. 직접 연결은 `MoleculeExplorationController.dockingEndpoint`와 `dockingToken`을 지정합니다.
 
 ## 자연어 동작과 결과 설명
 
