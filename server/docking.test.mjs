@@ -26,6 +26,19 @@ test('job operations forward only to configured service with separate token',asy
     assert.equal((await worker.fetch(request({op:'shell'}),env)).status,400);
   } finally { globalThis.fetch=old; }
 });
+test('container binding is preferred over the URL and receives the same request',async()=>{
+  const old=globalThis.fetch; let external=0; globalThis.fetch=async()=>{ external++; throw Error(); };
+  const seen=[];
+  const DOCKING={idFromName:name=>({name}),get:id=>({fetch:async(url,init)=>{seen.push({id,url,init});return Response.json({jobId:'job',status:'running'});}})};
+  try {
+    const env={APP_TOKEN:'client',DOCKING,DOCKING_SERVICE_URL:'https://cpu.test',DOCKING_SERVICE_TOKEN:'server-secret'};
+    const response=await worker.fetch(request({op:'poll',sessionId:'session',jobId:'job'}),env);
+    assert.equal((await response.json()).status,'running');
+    assert.equal(external,0); assert.equal(seen.length,1);
+    assert.equal(seen[0].id.name,'vina'); assert.equal(seen[0].url,'http://docking/api/docking');
+    assert.equal(seen[0].init.headers['X-App-Token'],'server-secret'); assert.equal(JSON.parse(seen[0].init.body).op,'poll');
+  } finally { globalThis.fetch=old; }
+});
 test('Korean candidate name is resolved before actual chemistry lookup',async()=>{
   const old=globalThis.fetch; let count=0;
   globalThis.fetch=async(url,init)=>{
