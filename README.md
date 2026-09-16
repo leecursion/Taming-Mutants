@@ -10,9 +10,7 @@
 
 ## 소개 영상
 
-<video src="https://github.com/user-attachments/assets/d6a09516-c0fe-4604-880e-b930f91b0ab3" controls="controls" width="100%">
-</video>
-**짧은 시연 영상은 추후 삽입 예정입니다.**
+<video src="https://github.com/user-attachments/assets/d6a09516-c0fe-4604-880e-b930f91b0ab3" controls="controls" width="100%"></video>
 
 <!-- 영상 준비 후 이 안내를 실제 영상 링크 또는 GitHub에 업로드한 영상 URL로 교체하세요.
 권장 구성(약 30~60초): 연구실 입장 → 단백질 회전·확대 → 변이 부위 관찰 → 후보 물질 실험 → AI 조수와 대화
