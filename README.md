@@ -10,6 +10,7 @@
 
 ## 소개 영상
 
+https://github.com/user-attachments/assets/d6a09516-c0fe-4604-880e-b930f91b0ab3
 **짧은 시연 영상은 추후 삽입 예정입니다.**
 
 <!-- 영상 준비 후 이 안내를 실제 영상 링크 또는 GitHub에 업로드한 영상 URL로 교체하세요.
